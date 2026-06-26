@@ -2974,6 +2974,23 @@ async function deleteResource(id) {
 /* ══════════════════════════════════════
    INIT
 ══════════════════════════════════════ */
+function initScrollableTextareas() {
+  document.querySelectorAll('.debrief-section textarea, #notes').forEach(el => {
+    let startY = 0;
+    el.addEventListener('touchstart', e => {
+      startY = e.touches[0].clientY;
+    }, { passive: true });
+    el.addEventListener('touchmove', e => {
+      const dy = startY - e.touches[0].clientY;
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight <= clientHeight) return;
+      const atBottom = scrollTop + clientHeight >= scrollHeight - 1 && dy > 0;
+      const atTop    = scrollTop <= 0 && dy < 0;
+      if (!atTop && !atBottom) e.preventDefault();
+    }, { passive: false });
+  });
+}
+
 function initApp() {
   // migrate legacy storage key
   try {
@@ -3007,6 +3024,7 @@ function initApp() {
     if (dirty) { const v = JSON.stringify(history); localStorage.setItem("raina_data", v); _syncKV("raina_data", v); }
   } catch(e) {}
 
+  initScrollableTextareas();
   buildDateSelects("invoiceDateSel", todayStr());
   buildDateSelects("debriefDateSel", todayStr());
   renderFlights();
