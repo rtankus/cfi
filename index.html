@@ -479,7 +479,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 
   <p class="section-label">Client & invoice</p>
   <div class="card"><div class="field-group">
-    <div class="field-row"><span class="field-label">Bill to</span><input type="text" id="clientName" placeholder="Client name" /></div>
+    <div class="field-row"><span class="field-label">Bill to</span><select id="clientName" class="student-sel" style="text-align:right"><option value="">— select —</option></select></div>
     <div class="field-row"><span class="field-label">Invoice #</span><input type="text" id="invoiceNum" placeholder="001" /></div>
     <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="invoiceDateSel"></div></div>
   </div></div>
@@ -531,7 +531,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 
   <p class="section-label">Session info</p>
   <div class="card"><div class="field-group">
-    <div class="field-row"><span class="field-label">Student</span><input type="text" id="dbStudent" placeholder="Student name" /></div>
+    <div class="field-row"><span class="field-label">Student</span><select id="dbStudent" class="student-sel" style="text-align:right"><option value="">— select —</option></select></div>
     <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="debriefDateSel"></div></div>
     <div class="field-row"><span class="field-label">Airport</span><input type="text" id="dbAirport" placeholder="KXXX" /></div>
     <div class="field-row"><span class="field-label">Aircraft</span><input type="text" id="dbAircraft" placeholder="N12345" /></div>
@@ -1511,6 +1511,7 @@ function saveDebrief() {
 
 function loadDebriefIntoForm(db) {
   editingDebriefId = db.id;
+  populateStudentSelects(db.student || '', null);
   document.getElementById("dbStudent").value  = db.student  || "";
   document.getElementById("dbAirport").value  = db.airport  || "";
   document.getElementById("dbAircraft").value = db.aircraft || "";
@@ -1715,6 +1716,7 @@ function loadInvoiceIntoForm(inv) {
   document.getElementById("bizName").value   = inv.biz   ||"";
   document.getElementById("bizWeb").value    = inv.web   ||"";
   document.getElementById("bizPhone").value  = inv.phone ||"";
+  populateStudentSelects(null, inv.client || '');
   document.getElementById("clientName").value= inv.client||"";
   document.getElementById("invoiceNum").value= inv.invNum||"";
   document.getElementById("notes").value     = inv.notes ||"";
@@ -2108,7 +2110,7 @@ const GOALS   = ["PPL","IFR","CPL","Sport","CFI","CFII","BFR","IPC","Other"];
 const MEDICALS= ["None","BasicMed","3rd Class","2nd Class","1st Class"];
 
 function getStudents() { try { return JSON.parse(localStorage.getItem("raina_students")||"[]"); } catch { return []; } }
-function saveStudents(arr) { const v=JSON.stringify(arr); localStorage.setItem("raina_students",v); _syncKV("raina_students",v); }
+function saveStudents(arr) { const v=JSON.stringify(arr); localStorage.setItem("raina_students",v); _syncKV("raina_students",v); populateStudentSelects(); }
 
 function renderStudents() {
   const students = getStudents();
@@ -2745,6 +2747,32 @@ function initApp() {
   buildDateSelects("debriefDateSel", todayStr());
   renderFlights();
   renderLineItems();
+  populateStudentSelects();
+}
+
+function populateStudentSelects(preserveStudent, preserveClient) {
+  const students = getStudents();
+  // Debrief: student names
+  const studentNames = students.map(s => s.name).filter(Boolean);
+  const dbSel = document.getElementById('dbStudent');
+  if (dbSel) {
+    const cur = preserveStudent ?? dbSel.value;
+    const opts = ['', ...studentNames];
+    if (cur && !opts.includes(cur)) opts.push(cur); // keep unknown values
+    dbSel.innerHTML = opts.map(n => `<option value="${esc(n)}" ${n===cur?'selected':''}>${n||'— select —'}</option>`).join('');
+  }
+  // Invoice: student names + unique billing names
+  const clientNames = [...new Set([
+    ...studentNames,
+    ...students.map(s => s.billingName).filter(Boolean)
+  ])];
+  const clSel = document.getElementById('clientName');
+  if (clSel) {
+    const cur = preserveClient ?? clSel.value;
+    const opts = ['', ...clientNames];
+    if (cur && !opts.includes(cur)) opts.push(cur);
+    clSel.innerHTML = opts.map(n => `<option value="${esc(n)}" ${n===cur?'selected':''}>${n||'— select —'}</option>`).join('');
+  }
 }
 
 bootApp();
