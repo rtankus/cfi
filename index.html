@@ -285,18 +285,69 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .login-field::placeholder { color: var(--text3); }
 .login-btn { background: var(--accent); color: var(--accent-text); border: none; border-radius: var(--radius); padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; }
 .login-err { color: var(--danger); font-size: 13px; text-align: center; min-height: 18px; }
+.login-toggle { background: none; border: none; color: var(--text2); font-size: 13px; cursor: pointer; font-family: inherit; text-align: center; padding: 0; }
+.login-toggle span { color: var(--accent); }
+
+/* ── STUDENT VIEW ── */
+#studentScreen { position: fixed; inset: 0; background: var(--bg); z-index: 9998; display: none; flex-direction: column; }
+#studentScreen.active { display: flex; }
+.sv-header { background: rgba(15,15,15,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 0.5px solid var(--border); padding: env(safe-area-inset-top) 16px 0; flex-shrink: 0; }
+.sv-header-inner { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 0; }
+.sv-header-left { display: flex; align-items: center; gap: 8px; }
+.sv-tabs { display: flex; gap: 0; padding: 6px 0 0; }
+.sv-tab { flex: 1; padding: 8px 10px; font-size: 13px; font-weight: 500; font-family: inherit; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text2); cursor: pointer; text-align: center; }
+.sv-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.sv-body { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+.sv-signout { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 6px 12px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
+.sv-card { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); margin-bottom: 10px; overflow: hidden; }
+.sv-card-header { padding: 12px 14px 8px; border-bottom: 0.5px solid var(--border); }
+.sv-card-meta { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+.sv-card-title { font-size: 15px; font-weight: 600; }
+.sv-card-body { padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.sv-section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text3); }
+.sv-section-text { font-size: 14px; color: var(--text); line-height: 1.55; }
+.sv-rating { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.sv-rating.tough { background: rgba(255,107,107,0.18); color: #ff6b6b; }
+.sv-rating.needs-review { background: rgba(247,200,126,0.18); color: var(--amber); }
+.sv-rating.solid { background: rgba(200,240,160,0.18); color: var(--accent); }
+.sv-rating.great { background: rgba(126,184,247,0.18); color: var(--blue); }
+.sv-inv-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; padding: 6px 0; border-bottom: 0.5px solid var(--border); }
+.sv-inv-row:last-child { border-bottom: none; }
+.sv-inv-label { color: var(--text2); }
+.sv-inv-total { font-size: 18px; font-weight: 700; color: var(--accent); padding: 10px 14px; }
+.sv-empty { text-align: center; padding: 60px 20px; color: var(--text3); font-size: 15px; }
 </style>
 </head>
 <body>
 <div id="loginScreen" style="display:none">
   <div class="login-box">
     <div class="login-title">✈ CFI Toolkit</div>
-    <div class="login-sub">Sign in to access your data</div>
+    <div class="login-sub" id="loginSubText">Sign in to access your data</div>
     <input class="login-field" id="loginEmail" type="email" placeholder="Email" autocomplete="email">
     <input class="login-field" id="loginPassword" type="password" placeholder="Password" autocomplete="current-password">
-    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <input class="login-field" id="loginPasswordConfirm" type="password" placeholder="Confirm password" style="display:none">
+    <button class="login-btn" id="loginActionBtn" onclick="doLogin()">Sign In</button>
     <div class="login-err" id="loginErr"></div>
+    <button class="login-toggle" id="loginToggleBtn" onclick="toggleLoginMode()">New student? <span>Create account</span></button>
   </div>
+</div>
+
+<!-- ══════════ STUDENT VIEW ══════════ -->
+<div id="studentScreen">
+  <div class="sv-header">
+    <div class="sv-header-inner">
+      <div class="sv-header-left">
+        <div class="logo-mark">✈️</div>
+        <span style="font-size:14px;font-weight:700" id="svStudentName">My Training</span>
+      </div>
+      <button class="sv-signout" onclick="doSignOut()">Sign Out</button>
+    </div>
+    <div class="sv-tabs">
+      <button class="sv-tab active" id="svTabDebriefs" onclick="svShowTab('debriefs')">Debriefs</button>
+      <button class="sv-tab" id="svTabInvoices" onclick="svShowTab('invoices')">Invoices</button>
+    </div>
+  </div>
+  <div class="sv-body" id="svBody"></div>
 </div>
 
 <div class="tab-bar">
@@ -568,7 +619,22 @@ const _sb = supabase.createClient(
   'https://onbjvoytsrswehfwzmia.supabase.co',
   'sb_publishable_w9LIIup85ppIAL2zYzMjJg_QKExph5S'
 );
+const CFI_EMAIL = 'tankusraina@gmail.com';
 let _sbUser = null;
+let _loginMode = 'signin'; // 'signin' | 'signup'
+let _svTab = 'debriefs';
+
+/* ── Login / Sign-up toggle ── */
+function toggleLoginMode() {
+  _loginMode = _loginMode === 'signin' ? 'signup' : 'signin';
+  const isSignup = _loginMode === 'signup';
+  document.getElementById('loginSubText').textContent    = isSignup ? 'Create your student account' : 'Sign in to access your data';
+  document.getElementById('loginActionBtn').textContent  = isSignup ? 'Create Account' : 'Sign In';
+  document.getElementById('loginActionBtn').onclick      = isSignup ? doSignUp : doLogin;
+  document.getElementById('loginPasswordConfirm').style.display = isSignup ? '' : 'none';
+  document.getElementById('loginToggleBtn').innerHTML    = isSignup ? 'Already have an account? <span>Sign In</span>' : 'New student? <span>Create account</span>';
+  document.getElementById('loginErr').textContent = '';
+}
 
 async function doLogin() {
   const email = document.getElementById('loginEmail').value.trim();
@@ -580,6 +646,28 @@ async function doLogin() {
   await bootApp();
 }
 
+async function doSignUp() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPassword').value;
+  const conf  = document.getElementById('loginPasswordConfirm').value;
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  if (pass !== conf) { errEl.textContent = "Passwords don't match"; return; }
+  if (pass.length < 6) { errEl.textContent = "Password must be at least 6 characters"; return; }
+  const { error } = await _sb.auth.signUp({ email, password: pass });
+  if (error) { errEl.textContent = error.message; return; }
+  errEl.style.color = 'var(--accent)';
+  errEl.textContent = 'Account created! Check your email to confirm, then sign in.';
+  setTimeout(() => { errEl.style.color = 'var(--danger)'; toggleLoginMode(); }, 3000);
+}
+
+async function doSignOut() {
+  await _sb.auth.signOut();
+  document.getElementById('studentScreen').classList.remove('active');
+  document.getElementById('loginScreen').style.display = 'flex';
+  _sbUser = null;
+}
+
 async function bootApp() {
   const { data: { user } } = await _sb.auth.getUser();
   if (!user) {
@@ -588,11 +676,106 @@ async function bootApp() {
   }
   _sbUser = user;
   document.getElementById('loginScreen').style.display = 'none';
+
+  if (user.email !== CFI_EMAIL) {
+    await loadStudentView(user.email);
+    return;
+  }
+
   const { data } = await _sb.from('kv_store').select('key, value');
   for (const row of (data || [])) {
     try { localStorage.setItem(row.key, row.value); } catch(e) {}
   }
   initApp();
+}
+
+/* ── Student view ── */
+async function loadStudentView(email) {
+  const screen = document.getElementById('studentScreen');
+  screen.classList.add('active');
+  document.getElementById('svBody').innerHTML = '<div class="sv-empty">Loading…</div>';
+  const { data, error } = await _sb.from('student_records').select('*').eq('student_email', email);
+  if (error) { document.getElementById('svBody').innerHTML = '<div class="sv-empty">Could not load data.</div>'; return; }
+  window._svRecords = data || [];
+  svShowTab('debriefs');
+}
+
+function svShowTab(tab) {
+  _svTab = tab;
+  document.getElementById('svTabDebriefs').classList.toggle('active', tab === 'debriefs');
+  document.getElementById('svTabInvoices').classList.toggle('active', tab === 'invoices');
+  renderStudentView();
+}
+
+function renderStudentView() {
+  const records = (window._svRecords || []).filter(r => r.record_type === (_svTab === 'debriefs' ? 'debrief' : 'invoice'));
+  records.sort((a, b) => (b.data.date || b.data.invDate || '').localeCompare(a.data.date || a.data.invDate || ''));
+  const body = document.getElementById('svBody');
+  if (!records.length) {
+    body.innerHTML = `<div class="sv-empty">No ${_svTab} yet.</div>`;
+    return;
+  }
+  if (_svTab === 'debriefs') {
+    body.innerHTML = records.map(r => renderSvDebrief(r.data)).join('');
+  } else {
+    body.innerHTML = records.map(r => renderSvInvoice(r.data)).join('');
+  }
+}
+
+const RATING_CLASS = { 'Tough day':'tough', 'Needs review':'needs-review', 'Solid':'solid', 'Great flight!':'great' };
+function renderSvDebrief(db) {
+  const ratingCls = RATING_CLASS[db.rating] || '';
+  const ratingBadge = db.rating ? `<span class="sv-rating ${ratingCls}">${db.rating}</span>` : '';
+  const sections = [
+    db.wentWell  ? `<div><div class="sv-section-label">Went well</div><div class="sv-section-text">${esc(db.wentWell)}</div></div>` : '',
+    db.needsWork ? `<div><div class="sv-section-label">Work on</div><div class="sv-section-text">${esc(db.needsWork)}</div></div>` : '',
+    db.nextTime  ? `<div><div class="sv-section-label">Next time</div><div class="sv-section-text">${esc(db.nextTime)}</div></div>` : '',
+    db.notes     ? `<div><div class="sv-section-label">Notes</div><div class="sv-section-text">${esc(db.notes)}</div></div>` : '',
+  ].filter(Boolean).join('');
+  const meta = [db.date, db.airport, db.aircraft, db.hours ? db.hours + ' hrs' : ''].filter(Boolean).join(' · ');
+  return `<div class="sv-card">
+    <div class="sv-card-header">
+      <div class="sv-card-meta">${meta}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="sv-card-title">${esc(db.lesson||'Flight Lesson')}</div>
+        ${ratingBadge}
+      </div>
+    </div>
+    <div class="sv-card-body">${sections||'<span style="color:var(--text3);font-size:13px">No details recorded.</span>'}</div>
+  </div>`;
+}
+
+function renderSvInvoice(inv) {
+  const items = (inv.lineItems||[]).filter(it => it.qty > 0).map(it =>
+    `<div class="sv-inv-row"><span class="sv-inv-label">${esc(it.name)}</span><span>${it.qty} ${it.unit} × $${it.rate} = $${(it.qty*it.rate).toFixed(2)}</span></div>`
+  ).join('');
+  return `<div class="sv-card">
+    <div class="sv-card-header">
+      <div class="sv-card-meta">Invoice #${inv.invNum||'—'} · Due ${inv.invDate||'—'}</div>
+      <div class="sv-card-title">${inv.flights?.map(f=>f.airport).filter(Boolean).join(', ')||'Flight'}</div>
+    </div>
+    <div style="padding:0 14px">${items}</div>
+    <div class="sv-inv-total">Total: $${(inv.total||0).toFixed(2)}</div>
+  </div>`;
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ── Push a single record to student_records ── */
+async function _pushStudentRecord(record) {
+  if (!_sbUser) return;
+  const studentName = record.student || record.client;
+  if (!studentName) return;
+  const students = getStudents();
+  const stu = students.find(s => s.name === studentName);
+  if (!stu || !stu.email) return;
+  await _sb.from('student_records').upsert({
+    id: String(record.id),
+    student_email: stu.email.trim().toLowerCase(),
+    record_type: record.type || 'invoice',
+    data: record,
+    updated_at: new Date().toISOString()
+  });
 }
 
 function _syncKV(key, value) {
@@ -832,6 +1015,7 @@ function saveDebrief() {
     showToast("Debrief saved ✓");
   }
   saveHistory(history);
+  _pushStudentRecord(db);
 }
 
 function loadDebriefIntoForm(db) {
@@ -1139,6 +1323,7 @@ function saveAndGeneratePDF(share = false) {
   const history = getHistory();
   history.push(inv);
   saveHistory(history);
+  _pushStudentRecord(inv);
   showToast("Saved ✓  Generating PDF…");
   setTimeout(() => generatePDF(inv, share), 300);
 }
@@ -1328,6 +1513,7 @@ function saveAndShareDebrief() {
     history.push(db);
   }
   saveHistory(history);
+  _pushStudentRecord(db);
   showToast("Saved ✓  Generating PDF…");
   setTimeout(() => generateDebriefPDF(db), 300);
 }
