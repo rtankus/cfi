@@ -497,6 +497,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   <div class="page-header">
     <span class="page-title">History</span>
     <div style="display:flex;gap:6px">
+      <button class="ghost-btn" onclick="forceSyncToCloud()">Sync ↑</button>
       <button class="ghost-btn" onclick="exportData()">Export</button>
       <label class="ghost-btn" style="cursor:pointer">Import<input type="file" accept=".json" class="import-file-input" onchange="importData(this)"></label>
     </div>
@@ -1044,6 +1045,16 @@ function importData(input) {
   };
   reader.readAsText(file);
   input.value="";
+}
+
+async function forceSyncToCloud() {
+  if (!_sbUser) { showToast("Not logged in"); return; }
+  const keys = ["raina_data", "raina_students", "raina_syllabi", "raina_resources"];
+  const rows = keys
+    .map(k => ({ key: k, value: localStorage.getItem(k) || "[]", user_id: _sbUser.id, updated_at: new Date().toISOString() }));
+  const { error } = await _sb.from('kv_store').upsert(rows);
+  if (error) { showToast("Sync failed: " + error.message); return; }
+  showToast("Synced to cloud ✓ — refresh on other devices");
 }
 
 /* ══════════════════════════════════════
