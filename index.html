@@ -417,10 +417,11 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <button class="sv-signout" onclick="doSignOut()">Sign Out</button>
     </div>
     <div class="sv-tabs">
-      <button class="sv-tab active" id="svTabHome"     onclick="svShowTab('home')">Home</button>
-      <button class="sv-tab"        id="svTabProgress" onclick="svShowTab('progress')">Progress</button>
-      <button class="sv-tab"        id="svTabLog"      onclick="svShowTab('log')">Log</button>
-      <button class="sv-tab"        id="svTabPayments" onclick="svShowTab('payments')">Payments</button>
+      <button class="sv-tab active" id="svTabHome"      onclick="svShowTab('home')">Home</button>
+      <button class="sv-tab"        id="svTabProgress"  onclick="svShowTab('progress')">Progress</button>
+      <button class="sv-tab"        id="svTabLog"       onclick="svShowTab('log')">Log</button>
+      <button class="sv-tab"        id="svTabPayments"  onclick="svShowTab('payments')">Payments</button>
+      <button class="sv-tab"        id="svTabResources" onclick="svShowTab('resources')">Resources</button>
     </div>
   </div>
   <div class="sv-body" id="svBody"></div>
@@ -691,6 +692,23 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 
 <div class="toast" id="toast"></div>
 
+<!-- ══════════ STUDENT PDF VIEWER ══════════ -->
+<div id="svPdfOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:var(--bg);flex-direction:column">
+  <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:0.5px solid var(--border);background:rgba(15,15,15,0.95);flex-shrink:0">
+    <button onclick="svClosePdf()" style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;padding:6px 14px;font-size:13px;color:var(--text2);font-family:inherit;cursor:pointer">← Back</button>
+    <span id="svPdfTitle" style="flex:1;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <span id="svPdfInd" style="font-size:12px;color:var(--text2)"></span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;flex-shrink:0">
+    <button id="svPdfPrev" onclick="svPdfGo(-1)" style="width:36px;height:36px;border-radius:9px;border:0.5px solid var(--border2);background:var(--surface2);font-size:18px;cursor:pointer;color:var(--text)">‹</button>
+    <div style="flex:1"></div>
+    <button id="svPdfNext" onclick="svPdfGo(1)"  style="width:36px;height:36px;border-radius:9px;border:0.5px solid var(--border2);background:var(--surface2);font-size:18px;cursor:pointer;color:var(--text)">›</button>
+  </div>
+  <div style="flex:1;overflow:auto;position:relative" id="svPdfWrapper">
+    <canvas id="svPdfCanvas" style="display:block;width:100%"></canvas>
+  </div>
+</div>
+
 <script>
 /* ══════════════════════════════════════
    SUPABASE
@@ -774,9 +792,12 @@ async function loadStudentView(email) {
   const screen = document.getElementById('studentScreen');
   screen.classList.add('active');
   document.getElementById('svBody').innerHTML = '<div class="sv-empty">Loading…</div>';
-  const { data, error } = await _sb.from('student_records').select('*').eq('student_email', email);
+  const [{ data: personal, error }, { data: shared }] = await Promise.all([
+    _sb.from('student_records').select('*').eq('student_email', email),
+    _sb.from('student_records').select('*').eq('student_email', 'shared'),
+  ]);
   if (error) { document.getElementById('svBody').innerHTML = '<div class="sv-empty">Could not load data.</div>'; return; }
-  window._svRecords = data || [];
+  window._svRecords = [...(personal || []), ...(shared || [])];
   svShowTab('home');
 }
 
@@ -1070,8 +1091,9 @@ function markInvoicePaid(id) {
 ══════════════════════════════════════ */
 function svShowTab(tab) {
   _svTab = tab;
-  ['home','progress','log','payments'].forEach(t => {
-    document.getElementById(`svTab${t.charAt(0).toUpperCase()+t.slice(1)}`).classList.toggle('active', t === tab);
+  ['home','progress','log','payments','resources'].forEach(t => {
+    const el = document.getElementById(`svTab${t.charAt(0).toUpperCase()+t.slice(1)}`);
+    if (el) el.classList.toggle('active', t === tab);
   });
   renderStudentView();
 }
@@ -1079,10 +1101,11 @@ function svShowTab(tab) {
 function renderStudentView() {
   const records = window._svRecords || [];
   const body = document.getElementById('svBody');
-  if (_svTab === 'home')     { renderSvHome(records, body); return; }
-  if (_svTab === 'progress') { renderSvProgress(records, body); return; }
-  if (_svTab === 'log')      { renderSvLog(records, body); return; }
-  if (_svTab === 'payments') { renderSvPayments(records, body); return; }
+  if (_svTab === 'home')      { renderSvHome(records, body); return; }
+  if (_svTab === 'progress')  { renderSvProgress(records, body); return; }
+  if (_svTab === 'log')       { renderSvLog(records, body); return; }
+  if (_svTab === 'payments')  { renderSvPayments(records, body); return; }
+  if (_svTab === 'resources') { renderSvResources(records, body); return; }
 }
 
 function renderSvHome(records, body) {
@@ -1259,6 +1282,71 @@ function exportToCalendar(item) {
   const a    = document.createElement('a');
   a.href = url; a.download = `lesson-${item.date}.ics`; a.click();
   URL.revokeObjectURL(url);
+}
+
+function renderSvResources(records, body) {
+  const resources = records.filter(r => r.record_type === 'resource').map(r => r.data);
+  if (!resources.length) { body.innerHTML = '<div class="sv-empty">No resources shared yet.</div>'; return; }
+  body.innerHTML = resources.map(r => `
+    <div class="sv-card" style="display:flex;align-items:center;padding:14px;margin-bottom:8px;cursor:pointer;gap:12px" onclick="svOpenResource('${r.id}','${esc(r.name||'')}','${r.cfi_user_id}')">
+      <div style="font-size:24px">📄</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name||'Resource')}</div>
+        <div style="font-size:12px;color:var(--text2)">${r.pageCount||'?'} page${r.pageCount!==1?'s':''}</div>
+      </div>
+      <span style="color:var(--text3);font-size:18px">›</span>
+    </div>`).join('');
+}
+
+let _svPdfDoc = null, _svPdfPage = 1, _svPdfTotal = 1;
+
+async function svOpenResource(id, name, cfiUserId) {
+  showToast('Loading…');
+  try {
+    await ensurePDFJS();
+    const path = `${cfiUserId}/resources/${id}`;
+    const { data, error } = await _sb.storage.from('pdfs').download(path);
+    if (error || !data) { showToast('Could not load PDF'); return; }
+    const buffer = await data.arrayBuffer();
+    _svPdfDoc   = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+    _svPdfTotal = _svPdfDoc.numPages;
+    _svPdfPage  = 1;
+    document.getElementById('svPdfTitle').textContent = name;
+    const overlay = document.getElementById('svPdfOverlay');
+    overlay.style.display = 'flex';
+    await svRenderPdfPage(_svPdfPage);
+  } catch(e) { showToast('Error loading PDF'); console.error(e); }
+}
+
+async function svRenderPdfPage(n) {
+  if (!_svPdfDoc) return;
+  const page    = await _svPdfDoc.getPage(n);
+  const wrapper = document.getElementById('svPdfWrapper');
+  const canvas  = document.getElementById('svPdfCanvas');
+  const w       = wrapper.clientWidth || 340;
+  const vp0     = page.getViewport({ scale: 1 });
+  const vp      = page.getViewport({ scale: w / vp0.width });
+  canvas.width  = vp.width;
+  canvas.height = vp.height;
+  canvas.style.width  = w + 'px';
+  canvas.style.height = Math.round(vp.height * w / vp.width) + 'px';
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  document.getElementById('svPdfInd').textContent = `${n} / ${_svPdfTotal}`;
+  document.getElementById('svPdfPrev').disabled = n <= 1;
+  document.getElementById('svPdfNext').disabled = n >= _svPdfTotal;
+  wrapper.scrollTop = 0;
+}
+
+async function svPdfGo(dir) {
+  const next = _svPdfPage + dir;
+  if (next < 1 || next > _svPdfTotal) return;
+  _svPdfPage = next;
+  await svRenderPdfPage(_svPdfPage);
+}
+
+function svClosePdf() {
+  document.getElementById('svPdfOverlay').style.display = 'none';
+  _svPdfDoc = null;
 }
 
 function fmtDateStr(s) {
@@ -2578,7 +2666,22 @@ async function seedBuiltinSyllabus() {
    RESOURCES TAB
 ══════════════════════════════════════ */
 function getResMeta()       { try { return JSON.parse(localStorage.getItem("raina_resources")||"[]"); } catch { return []; } }
-function saveResMeta(arr)   { const v=JSON.stringify(arr); localStorage.setItem("raina_resources",v); _syncKV("raina_resources",v); }
+function saveResMeta(arr)   { const v=JSON.stringify(arr); localStorage.setItem("raina_resources",v); _syncKV("raina_resources",v); _pushSharedResources(arr); }
+
+async function _pushSharedResources(arr) {
+  if (!_sbUser) return;
+  if (!arr.length) {
+    await _sb.from('student_records').delete().eq('student_email','shared').eq('record_type','resource');
+    return;
+  }
+  const rows = arr.map(r => ({ id:`res_${r.id}`, student_email:'shared', record_type:'resource', data:{ ...r, cfi_user_id: _sbUser.id }, updated_at: new Date().toISOString() }));
+  await _sb.from('student_records').upsert(rows);
+  // delete any removed resources
+  const { data: existing } = await _sb.from('student_records').select('id').eq('student_email','shared').eq('record_type','resource');
+  const keep = new Set(rows.map(r => r.id));
+  const toRemove = (existing||[]).filter(r => !keep.has(r.id)).map(r => r.id);
+  if (toRemove.length) await _sb.from('student_records').delete().in('id', toRemove);
+}
 
 function triggerResourceUpload() {
   document.getElementById("resourceFileInput").click();
@@ -2611,6 +2714,7 @@ async function handleResourceUpload(input) {
 
 function renderResourcesTab() {
   resMeta = getResMeta();
+  _pushSharedResources(resMeta);
   const grid = document.getElementById("resGrid");
   if (!grid) return;
   if (!resMeta.length) { grid.innerHTML = ""; return; }
