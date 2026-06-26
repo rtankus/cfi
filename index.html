@@ -356,10 +356,10 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 <!-- ══════════ DEBRIEF PAGE ══════════ -->
 <div class="page" id="page-debrief">
   <div class="page-header">
-    <span class="page-title">Flight Debrief</span>
+    <span class="page-title" id="debriefPageTitle">Flight Debrief</span>
     <div style="display:flex;gap:6px">
       <button class="ghost-btn" onclick="saveAndShareDebrief()">Share</button>
-      <button class="blue-btn" onclick="saveDebrief()">Save</button>
+      <button class="blue-btn" id="debriefSaveBtn" onclick="saveDebrief()">Save</button>
     </div>
   </div>
 
@@ -369,6 +369,12 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
     <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="debriefDateSel"></div></div>
     <div class="field-row"><span class="field-label">Airport</span><input type="text" id="dbAirport" placeholder="KXXX" /></div>
     <div class="field-row"><span class="field-label">Aircraft</span><input type="text" id="dbAircraft" placeholder="N12345" /></div>
+    <div class="field-row"><span class="field-label">Session type</span>
+      <div style="display:flex;gap:6px;justify-content:flex-end;flex:1">
+        <button class="rating-btn" id="stypeFlt" onclick="setSessionType('flt')" style="font-size:12px;padding:6px 10px;flex:unset">✈ Flight</button>
+        <button class="rating-btn" id="stypeGnd" onclick="setSessionType('gnd')" style="font-size:12px;padding:6px 10px;flex:unset">📖 Ground</button>
+      </div>
+    </div>
     <div class="field-row"><span class="field-label">Flight time</span><input type="number" id="dbHours" placeholder="1.5" step="0.1" /></div>
     <div class="field-row"><span class="field-label">Lesson / stage</span><input type="text" id="dbLesson" placeholder="e.g. Stage 2 — soft field" /></div>
   </div></div>
@@ -564,7 +570,9 @@ let lineItems = [
 ];
 let flights     = [{ date:"", airport:"", hobbsIn:"", hobbsOut:"" }];
 let attachments = [];
-let dbRating    = "";
+let dbRating      = "";
+let dbSessionType = "";
+let editingDebriefId = null;
 let historyFilter = "all";
 
 // Syllabus state
@@ -727,20 +735,27 @@ function setRating(r) {
   document.getElementById("ratingRough").className = "rating-btn" + (r==="rough"?" selected-rough":"");
 }
 
+function setSessionType(t) {
+  dbSessionType = t;
+  document.getElementById("stypeFlt").className = "rating-btn" + (t==="flt"?" selected-good":"");
+  document.getElementById("stypeGnd").className = "rating-btn" + (t==="gnd"?" selected-ok":"");
+}
+
 function collectDebrief() {
   return {
-    id: Date.now(), type: "debrief", savedAt: new Date().toISOString(),
-    student:  document.getElementById("dbStudent").value,
-    date:     getDateFromSel("debriefDateSel"),
-    airport:  document.getElementById("dbAirport").value,
-    aircraft: document.getElementById("dbAircraft").value,
-    hours:    document.getElementById("dbHours").value,
-    lesson:   document.getElementById("dbLesson").value,
-    rating:   dbRating,
-    wentWell: document.getElementById("dbWentWell").value,
-    needsWork:document.getElementById("dbNeedsWork").value,
-    nextTime: document.getElementById("dbNextTime").value,
-    notes:    document.getElementById("dbNotes").value,
+    id: editingDebriefId || Date.now(), type: "debrief", savedAt: new Date().toISOString(),
+    student:     document.getElementById("dbStudent").value,
+    date:        getDateFromSel("debriefDateSel"),
+    airport:     document.getElementById("dbAirport").value,
+    aircraft:    document.getElementById("dbAircraft").value,
+    hours:       document.getElementById("dbHours").value,
+    lesson:      document.getElementById("dbLesson").value,
+    sessionType: dbSessionType,
+    rating:      dbRating,
+    wentWell:    document.getElementById("dbWentWell").value,
+    needsWork:   document.getElementById("dbNeedsWork").value,
+    nextTime:    document.getElementById("dbNextTime").value,
+    notes:       document.getElementById("dbNotes").value,
   };
 }
 
@@ -748,12 +763,22 @@ function saveDebrief() {
   const db = collectDebrief();
   if (!db.student && !db.wentWell && !db.needsWork) { showToast("Add some content first"); return; }
   const history = getHistory();
-  history.push(db);
+  if (editingDebriefId) {
+    const idx = history.findIndex(r => r.id === editingDebriefId);
+    if (idx !== -1) history[idx] = db; else history.push(db);
+    editingDebriefId = null;
+    document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
+    document.getElementById("debriefSaveBtn").textContent = "Save";
+    showToast("Debrief updated ✓");
+  } else {
+    history.push(db);
+    showToast("Debrief saved ✓");
+  }
   saveHistory(history);
-  showToast("Debrief saved ✓");
 }
 
 function loadDebriefIntoForm(db) {
+  editingDebriefId = db.id;
   document.getElementById("dbStudent").value  = db.student  || "";
   document.getElementById("dbAirport").value  = db.airport  || "";
   document.getElementById("dbAircraft").value = db.aircraft || "";
@@ -764,16 +789,23 @@ function loadDebriefIntoForm(db) {
   document.getElementById("dbNextTime").value = db.nextTime || "";
   document.getElementById("dbNotes").value    = db.notes    || "";
   setRating(db.rating || "");
+  setSessionType(db.sessionType || "");
   buildDateSelects("debriefDateSel", db.date);
+  document.getElementById("debriefPageTitle").textContent = "Edit Debrief";
+  document.getElementById("debriefSaveBtn").textContent = "Update";
   showTab("debrief");
-  showToast("Debrief loaded");
+  showToast("Debrief loaded — tap Update to save changes");
 }
 
 function newDebrief() {
+  editingDebriefId = null;
   ["dbStudent","dbAirport","dbAircraft","dbHours","dbLesson","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
     .forEach(id => document.getElementById(id).value = "");
   setRating("");
+  setSessionType("");
   buildDateSelects("debriefDateSel", todayStr());
+  document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
+  document.getElementById("debriefSaveBtn").textContent = "Save";
   showTab("debrief");
 }
 
@@ -887,10 +919,10 @@ function renderHistory() {
         <div class="history-item-top">
           <div class="history-item-info">
             <div class="client">${inv.student||"No student"}</div>
-            <div class="meta">${fmtDate(inv.date)||"No date"}${inv.airport?" · "+inv.airport:""}${inv.hours?" · "+inv.hours+" hrs":""}</div>
+            <div class="meta">${fmtDate(inv.date)||"No date"}${inv.airport?" · "+inv.airport:""}${inv.hours?" · "+inv.hours+" hrs":""}${inv.sessionType?" · "+(inv.sessionType==="flt"?"✈ Flt":"📖 Gnd"):""}</div>
             ${ratingPill}
           </div>
-          <div class="history-item-right">${badge}<button class="history-delete-btn" onclick="deleteRecord(event,${inv.id})">🗑</button></div>
+          <div class="history-item-right">${badge}<button class="history-delete-btn" onclick="event.stopPropagation();generateDebriefPDF(JSON.parse(this.closest('[data-inv]').dataset.inv),'view')" title="View PDF">PDF</button><button class="history-delete-btn" onclick="deleteRecord(event,${inv.id})">🗑</button></div>
         </div>
         ${preview?`<div class="debrief-preview">${preview}</div>`:""}
       </div>`;
@@ -904,6 +936,7 @@ function renderHistory() {
           <div class="history-item-right">
             <span class="history-item-amount">$${(inv.total||0).toFixed(2)}</span>
             ${badge}
+            <button class="history-delete-btn" onclick="event.stopPropagation();generatePDF(JSON.parse(this.closest('[data-inv]').dataset.inv),'view')" title="View PDF">PDF</button>
             <button class="history-delete-btn" onclick="deleteRecord(event,${inv.id})">🗑</button>
           </div>
         </div>
@@ -1193,6 +1226,9 @@ async function generatePDF(inv, share = false) {
       URL.revokeObjectURL(url);
       showToast("PDF saved ✓");
     }
+  } else if (share === 'view') {
+    const url = doc.output('bloburl');
+    window.open(url, '_blank');
   } else {
     doc.save(fileName);
     showToast("PDF saved ✓");
@@ -1215,13 +1251,21 @@ function saveAndShareDebrief() {
   const db = collectDebrief();
   if (!db.student && !db.wentWell && !db.needsWork) { showToast("Add some content first"); return; }
   const history = getHistory();
-  history.push(db);
+  if (editingDebriefId) {
+    const idx = history.findIndex(r => r.id === editingDebriefId);
+    if (idx !== -1) history[idx] = db; else history.push(db);
+    editingDebriefId = null;
+    document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
+    document.getElementById("debriefSaveBtn").textContent = "Save";
+  } else {
+    history.push(db);
+  }
   saveHistory(history);
   showToast("Saved ✓  Generating PDF…");
   setTimeout(() => generateDebriefPDF(db), 300);
 }
 
-async function generateDebriefPDF(db) {
+async function generateDebriefPDF(db, mode = 'share') {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"pt", format:"letter" });
   const margin=44, pageW=612, colR=pageW-margin;
@@ -1292,6 +1336,11 @@ async function generateDebriefPDF(db) {
   doc.text("flyingwithraina.com   •   (346) 400-6668", pageW/2, 768, { align:"center" });
 
   const fileName = `debrief-${(db.student||"student").replace(/\s+/g,"-")}-${db.date||todayStr()}.pdf`;
+  if (mode === 'view') {
+    const url = doc.output('bloburl');
+    window.open(url, '_blank');
+    return;
+  }
   const blob = doc.output("blob");
   const file = new File([blob], fileName, { type:"application/pdf" });
   if (navigator.share && navigator.canShare && navigator.canShare({ files:[file] })) {
@@ -1322,7 +1371,15 @@ function renderStudents() {
   }
   const history = getHistory();
   el.innerHTML = students.map(s => {
-    const debriefCount = history.filter(r => r.type === "debrief" && r.student === s.name).length;
+    const studentDebriefs = history.filter(r => r.type === "debrief" && r.student === s.name);
+    const debriefCount = studentDebriefs.length;
+    const fltCount = studentDebriefs.filter(r => r.sessionType === "flt").length;
+    const gndCount = studentDebriefs.filter(r => r.sessionType === "gnd").length;
+    const untagged = debriefCount - fltCount - gndCount;
+    const sessionLabel = (fltCount || gndCount)
+      ? `${fltCount} flt · ${gndCount} gnd${untagged ? " · "+untagged+" untagged" : ""}`
+      : `${debriefCount} debrief${debriefCount!==1?"s":""}`;
+
     const goalOpts = GOALS.map(g => `<option value="${g}" ${s.goal===g?"selected":""}>${g}</option>`).join("");
     const medOpts  = MEDICALS.map(m => `<option value="${m}" ${s.medical===m?"selected":""}>${m}</option>`).join("");
     return `
@@ -1330,7 +1387,7 @@ function renderStudents() {
         <div class="student-card-header" onclick="toggleStudent(${s.id})">
           <div>
             <div class="student-name">${s.name||"Unnamed student"}</div>
-            <div class="student-meta">${s.medical||"No medical"} · ${debriefCount} debrief${debriefCount!==1?"s":""}</div>
+            <div class="student-meta">${s.medical||"No medical"} · ${sessionLabel}</div>
           </div>
           <div class="student-right">
             <span class="goal-badge">${s.goal||"—"}</span>
@@ -1419,6 +1476,12 @@ async function dbSavePDF(id, name, buffer) {
   await _sb.storage.from('pdfs').upload(path, buffer, { upsert: true, contentType: 'application/pdf' });
 }
 async function dbLoadPDF(id) {
+  if (id === BUILTIN_SYL_ID) {
+    const raw = atob(BUILTIN_SYL_B64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return { id, data: bytes.buffer };
+  }
   const path = `${_sbUser.id}/pdfs/${id}`;
   const { data, error } = await _sb.storage.from('pdfs').download(path);
   if (error || !data) return null;
@@ -1725,7 +1788,6 @@ async function seedBuiltinSyllabus() {
     const tmpDoc    = await window.pdfjsLib.getDocument({ data: bytes.slice() }).promise;
     const pageCount = tmpDoc.numPages;
     const pageNames = await scanPageNames(tmpDoc);
-    await dbSavePDF(BUILTIN_SYL_ID, BUILTIN_SYL_NAME, bytes.buffer);
     const newMeta = getSylMeta();
     newMeta.unshift({ id: BUILTIN_SYL_ID, name: BUILTIN_SYL_NAME, pageCount, pageNames });
     saveSylMeta(newMeta);
