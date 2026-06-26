@@ -183,7 +183,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .debrief-dot.blue   { background: var(--blue); }
 .debrief-dot.amber  { background: var(--amber); }
 .debrief-section-header span { font-size: 13px; font-weight: 600; color: var(--text); }
-.debrief-section textarea { padding: 12px 14px; min-height: 100px; font-size: 14px; }
+.debrief-section textarea { padding: 12px 14px; min-height: 100px; max-height: 220px; font-size: 14px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ── HISTORY ── */
 .history-empty { text-align: center; padding: 50px 20px; color: var(--text3); font-size: 15px; }
@@ -500,7 +500,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   <p class="section-label">Notes</p>
   <div class="card"><div class="field-group">
     <div class="field-row stacked">
-      <textarea id="notes" placeholder="Notes for the client — fuel estimates, deferred charges, etc."></textarea>
+      <textarea id="notes" placeholder="Notes for the client — fuel estimates, deferred charges, etc." style="max-height:180px;overflow-y:auto;-webkit-overflow-scrolling:touch"></textarea>
     </div>
   </div></div>
 
@@ -686,6 +686,9 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
     <button class="filter-btn active" id="filterAll"     onclick="setFilter('all')">All</button>
     <button class="filter-btn"        id="filterInvoice" onclick="setFilter('invoice')">Invoices</button>
     <button class="filter-btn"        id="filterDebrief" onclick="setFilter('debrief')">Debriefs</button>
+    <select id="historyStudentSel" onchange="setHistoryStudentFilter(this.value)" style="margin-left:auto;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;padding:6px 12px;font-size:13px;color:var(--text);font-family:inherit;cursor:pointer;max-width:140px">
+      <option value="">All students</option>
+    </select>
   </div>
 
   <div id="historyList"></div>
@@ -962,6 +965,9 @@ function stuTab(sid, tab, btn) {
   if (tab === 'schedule')  renderStuSched(sid);
   if (tab === 'checklist') renderStuCheck(sid);
   if (tab === 'syllabus')  renderStuSyl(sid);
+  if (tab === 'progress')  renderStuProgress(sid);
+  if (tab === 'log')       renderStuLog(sid);
+  if (tab === 'payments')  renderStuPayments(sid);
 }
 
 /* ── Schedule ── */
@@ -1074,6 +1080,95 @@ function toggleSylItem(sid, stageKey, type, num, checked) {
   syl[stageKey][type][num] = checked;
   saveStuSyl(sid, syl, getStuEmail(sid));
   renderStuSyl(sid);
+}
+
+/* ── Admin view of student progress / log / payments ── */
+function renderStuProgress(sid) {
+  const syl = getStuSyl(sid);
+  const el = document.getElementById(`stu-progress-content-${sid}`);
+  el.innerHTML = PPL_SYLLABUS.map(stage => {
+    const st = syl[stage.key] || { f:{}, g:{} };
+    const total = stage.flights.length + stage.grounds.length;
+    const fDone = stage.flights.filter(l => st.f && st.f[l.n]).length;
+    const gDone = stage.grounds.filter(l => st.g && st.g[l.n]).length;
+    const done  = fDone + gDone;
+    const pct   = total ? Math.round(done/total*100) : 0;
+    return `<div class="sv-stage" style="margin-bottom:4px">
+      <div class="sv-stage-header" style="padding:10px 14px">
+        <div class="sv-stage-name" style="font-size:13px">${stage.name}</div>
+        <div class="sv-progress-bar-wrap"><div class="sv-progress-bar" style="width:${pct}%"></div></div>
+        <div class="sv-progress-label">${fDone}/${stage.flights.length} flt · ${gDone}/${stage.grounds.length} gnd</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderStuLog(sid) {
+  const stu = getStudents().find(s => s.id === sid);
+  if (!stu) return;
+  const el = document.getElementById(`stu-log-content-${sid}`);
+  const debriefs = getHistory()
+    .filter(r => r.type === 'debrief' && r.student === stu.name)
+    .sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  if (!debriefs.length) { el.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--text3)">No flight log entries yet.</div>'; return; }
+  const totals = { total:0, solo:0, xc:0, night:0, inst:0 };
+  const rows = debriefs.map(db => {
+    const hrs  = parseFloat(db.hours) || 0;
+    const xc   = parseFloat(db.xc) || 0;
+    const ngt  = parseFloat(db.night) || 0;
+    const inst = parseFloat(db.instrument) || 0;
+    const isSolo = db.sessionType === 'flt' && (db.lesson||'').toLowerCase().includes('solo');
+    totals.total += hrs; totals.xc += xc; totals.night += ngt; totals.inst += inst;
+    if (isSolo) totals.solo += hrs;
+    const v = n => n ? n.toFixed(1) : '<span style="color:var(--text3)">—</span>';
+    return `<div class="sv-log-row">
+      <div>
+        <div style="font-size:13px;font-weight:500">${esc(db.lesson||db.airport||'Flight')}</div>
+        <div style="font-size:11px;color:var(--text3)">${db.date||''}</div>
+      </div>
+      <span class="sv-log-hrs val">${v(hrs)}</span>
+      <span class="sv-log-hrs">${isSolo ? v(hrs) : '<span style="color:var(--text3)">—</span>'}</span>
+      <span class="sv-log-hrs">${v(xc)}</span>
+      <span class="sv-log-hrs">${v(ngt)}</span>
+      <span class="sv-log-hrs">${v(inst)}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="card" style="margin:10px 0">
+    <div class="sv-log-row sv-log-header">
+      <span>Lesson</span><span class="sv-log-hrs">Total</span><span class="sv-log-hrs">Solo</span>
+      <span class="sv-log-hrs">XC</span><span class="sv-log-hrs">Night</span><span class="sv-log-hrs">Inst</span>
+    </div>
+    ${rows}
+    <div class="sv-log-total-row">
+      <span>Totals</span>
+      <span class="sv-log-hrs">${totals.total.toFixed(1)}</span>
+      <span class="sv-log-hrs">${totals.solo.toFixed(1)}</span>
+      <span class="sv-log-hrs">${totals.xc.toFixed(1)}</span>
+      <span class="sv-log-hrs">${totals.night.toFixed(1)}</span>
+      <span class="sv-log-hrs">${totals.inst.toFixed(1)}</span>
+    </div>
+  </div>`;
+}
+
+function renderStuPayments(sid) {
+  const stu = getStudents().find(s => s.id === sid);
+  if (!stu) return;
+  const el = document.getElementById(`stu-payments-content-${sid}`);
+  const invoices = getHistory()
+    .filter(r => !r.type || r.type === 'invoice')
+    .filter(r => r.client === stu.name || (stu.billingName && r.client === stu.billingName))
+    .sort((a,b) => (b.invDate||b.savedAt||'').localeCompare(a.invDate||a.savedAt||''));
+  if (!invoices.length) { el.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--text3)">No invoices yet.</div>'; return; }
+  el.innerHTML = invoices.map(inv => `
+    <div class="sv-card" style="margin:8px 0 0">
+      <div class="sv-card-header">
+        <div class="sv-card-meta">Invoice #${inv.invNum||'—'} · ${inv.invDate||'—'}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div class="sv-card-title">$${(inv.total||0).toFixed(2)}</div>
+          <span class="sv-pay-badge ${inv.paid?'paid':'unpaid'}">${inv.paid?'Paid':'Unpaid'}</span>
+        </div>
+      </div>
+    </div>`).join('') + '<div style="padding-bottom:10px"></div>';
 }
 
 /* ── Mark invoice paid (CFI side) ── */
@@ -1378,6 +1473,7 @@ let dbRating      = "";
 let dbSessionType = "";
 let editingDebriefId = null;
 let historyFilter = "all";
+let historyStudentFilter = "";
 
 // Syllabus state
 let syllabusMeta = [];       // [{id, name, pageCount, pageNames:[]}]
@@ -1727,9 +1823,32 @@ function setFilter(f) {
   renderHistory();
 }
 
+function setHistoryStudentFilter(v) {
+  historyStudentFilter = v;
+  renderHistory();
+}
+
+function populateHistoryStudentFilter() {
+  const sel = document.getElementById('historyStudentSel');
+  if (!sel) return;
+  const students = getStudents();
+  const current = historyStudentFilter;
+  sel.innerHTML = '<option value="">All students</option>' +
+    students.filter(s => s.name).map(s => `<option value="${esc(s.name)}"${s.name===current?' selected':''}>${esc(s.name)}</option>`).join('');
+}
+
 function renderHistory() {
+  populateHistoryStudentFilter();
   const all = getHistory().sort((a,b)=>b.id-a.id);
-  const filtered = historyFilter==="all" ? all : all.filter(r=>r.type===historyFilter||(historyFilter==="invoice"&&!r.type));
+  let filtered = historyFilter==="all" ? all : all.filter(r=>r.type===historyFilter||(historyFilter==="invoice"&&!r.type));
+  if (historyStudentFilter) {
+    const stuObj = getStudents().find(s => s.name === historyStudentFilter);
+    filtered = filtered.filter(r =>
+      r.student === historyStudentFilter ||
+      r.client  === historyStudentFilter ||
+      (stuObj?.billingName && r.client === stuObj.billingName)
+    );
+  }
   const el = document.getElementById("historyList");
   if (!filtered.length) {
     el.innerHTML=`<div class="history-empty"><div class="icon">${historyFilter==="debrief"?"📋":"🗂️"}</div><p>No ${historyFilter==="all"?"records":historyFilter+"s"} yet.</p></div>`;
@@ -1738,7 +1857,7 @@ function renderHistory() {
   el.innerHTML = filtered.map(inv => {
     const isDebrief = inv.type==="debrief";
     const badge = `<span class="history-type-badge ${isDebrief?"badge-debrief":"badge-invoice"}">${isDebrief?"Debrief":"Invoice"}</span>`;
-    const safeInv = JSON.stringify(inv).replace(/\\/g,'\\\\').replace(/"/g,'&quot;');
+    const safeInv = JSON.stringify(inv).replace(/"/g,'&quot;');
     if (isDebrief) {
       const ratingPill = inv.rating ? `<span class="overall-pill ${inv.rating==="good"?"pill-good":inv.rating==="ok"?"pill-ok":"pill-rough"}">${inv.rating==="good"?"Great session":inv.rating==="ok"?"Solid":"Tough day"}</span>` : "";
       const preview = [inv.wentWell,inv.needsWork].filter(Boolean).join(" · ").slice(0,100);
@@ -1966,7 +2085,7 @@ async function generatePDF(inv, share = false) {
   y+=18;
 
   if (notes&&notes.trim()) {
-    const nl=doc.splitTextToSize(notes,pageW-margin*2-20);
+    const nl=notes.split('\n').flatMap(l=>doc.splitTextToSize(l||' ',pageW-margin*2-20));
     const nh=nl.length*12+22;
     doc.setFillColor(250,250,248); doc.rect(margin,y,pageW-margin*2,nh,"F");
     doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(120,120,120);
@@ -2009,9 +2128,19 @@ async function generatePDF(inv, share = false) {
   doc.setFont("helvetica","italic"); doc.setFontSize(10); doc.setTextColor(140,140,140);
   doc.text(`Thank you for flying with Raina!   •   ${web}`,pageW/2,pageH-24,{align:"center"});
 
+  const attSource = attachments.length ? attachments : (inv.attachmentNames||[]).map(n=>({name:n,_missing:true}));
   let attachIdx=0;
-  for (const att of attachments) {
+  for (const att of attSource) {
     attachIdx++;
+    if (att._missing) {
+      doc.addPage();
+      doc.setFillColor(20,20,20); doc.rect(0,0,pageW,40,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(200,240,160);
+      doc.text(`Attachment ${attachIdx}: ${att.name}`,margin,26);
+      doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(120,120,120);
+      doc.text("File not available — attachments must be re-uploaded to include in PDF.",margin,80);
+      continue;
+    }
     if (att.type.startsWith("image/")) {
       doc.addPage();
       doc.setFillColor(20,20,20); doc.rect(0,0,pageW,40,"F");
@@ -2153,7 +2282,7 @@ async function generateDebriefPDF(db, mode = 'share') {
 
   for (const sec of sections) {
     if (!sec.body || !sec.body.trim()) continue;
-    const lines = doc.splitTextToSize(sec.body, pageW - margin*2 - 20);
+    const lines = sec.body.split('\n').flatMap(l => doc.splitTextToSize(l || ' ', pageW - margin*2 - 20));
     const boxH  = lines.length * 13 + 32;
     if (y + boxH > 750) { doc.addPage(); y = 44; }
 
@@ -2240,6 +2369,9 @@ function renderStudents() {
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'schedule',this)">Schedule</button>
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'checklist',this)">Checklist</button>
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'syllabus',this)">Syllabus</button>
+            <button class="stu-inner-tab"        onclick="stuTab(${s.id},'progress',this)">Progress</button>
+            <button class="stu-inner-tab"        onclick="stuTab(${s.id},'log',this)">Log</button>
+            <button class="stu-inner-tab"        onclick="stuTab(${s.id},'payments',this)">Payments</button>
           </div>
           <div class="stu-inner-section active" id="stu-details-${s.id}">
             <div class="field-group">
@@ -2273,6 +2405,15 @@ function renderStudents() {
           </div>
           <div class="stu-inner-section" id="stu-syllabus-${s.id}">
             <div id="stu-syl-list-${s.id}"></div>
+          </div>
+          <div class="stu-inner-section" id="stu-progress-${s.id}">
+            <div id="stu-progress-content-${s.id}" style="padding:8px 0"></div>
+          </div>
+          <div class="stu-inner-section" id="stu-log-${s.id}">
+            <div id="stu-log-content-${s.id}"></div>
+          </div>
+          <div class="stu-inner-section" id="stu-payments-${s.id}">
+            <div id="stu-payments-content-${s.id}"></div>
           </div>
         </div>
       </div>`;
@@ -2849,6 +2990,23 @@ function initApp() {
     }
   } catch(e) {}
 
+  // migrate corrupted \n literals back to real newlines in debrief text fields
+  try {
+    const DEBRIEF_TEXT_FIELDS = ['wentWell','needsWork','nextTime','notes'];
+    const history = JSON.parse(localStorage.getItem("raina_data") || "[]");
+    let dirty = false;
+    for (const rec of history) {
+      if (rec.type !== 'debrief') continue;
+      for (const f of DEBRIEF_TEXT_FIELDS) {
+        if (typeof rec[f] === 'string' && rec[f].includes('\\n')) {
+          rec[f] = rec[f].replace(/\\n/g, '\n');
+          dirty = true;
+        }
+      }
+    }
+    if (dirty) { const v = JSON.stringify(history); localStorage.setItem("raina_data", v); _syncKV("raina_data", v); }
+  } catch(e) {}
+
   buildDateSelects("invoiceDateSel", todayStr());
   buildDateSelects("debriefDateSel", todayStr());
   renderFlights();
@@ -2868,6 +3026,7 @@ function populateStudentSelects() {
   if (s1) { const cur = s1.value; s1.innerHTML = opts(studentNames); s1.value = cur; }
   const s2 = document.getElementById('clientName');
   if (s2) { const cur = s2.value; s2.innerHTML = opts(clientNames); s2.value = cur; }
+  populateHistoryStudentFilter();
 }
 
 bootApp();
