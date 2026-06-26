@@ -542,6 +542,9 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       </div>
     </div>
     <div class="field-row"><span class="field-label">Flight time</span><input type="number" id="dbHours" placeholder="1.5" step="0.1" /></div>
+    <div class="field-row"><span class="field-label">XC</span><input type="number" id="dbXC" placeholder="0.0" step="0.1" /></div>
+    <div class="field-row"><span class="field-label">Night</span><input type="number" id="dbNight" placeholder="0.0" step="0.1" /></div>
+    <div class="field-row"><span class="field-label">Instrument</span><input type="number" id="dbInstrument" placeholder="0.0" step="0.1" /></div>
     <div class="field-row"><span class="field-label">Lesson / stage</span><input type="text" id="dbLesson" placeholder="e.g. Stage 2 — soft field" /></div>
   </div></div>
 
@@ -1160,22 +1163,26 @@ function renderSvLog(records, body) {
   const debriefs = records.filter(r => r.record_type === 'debrief').map(r => r.data)
     .sort((a,b) => (b.date||'').localeCompare(a.date||''));
   if (!debriefs.length) { body.innerHTML = '<div class="sv-empty">No flight log entries yet.</div>'; return; }
-  const totals = { dual:0, solo:0, xc:0, night:0, inst:0, total:0 };
+  const totals = { total:0, solo:0, xc:0, night:0, inst:0 };
   const rows = debriefs.map(db => {
-    const hrs = parseFloat(db.hours) || 0;
+    const hrs  = parseFloat(db.hours) || 0;
+    const xc   = parseFloat(db.xc) || 0;
+    const ngt  = parseFloat(db.night) || 0;
+    const inst = parseFloat(db.instrument) || 0;
     const isSolo = db.sessionType === 'flt' && (db.lesson||'').toLowerCase().includes('solo');
-    totals.total += hrs;
-    if (isSolo) totals.solo += hrs; else totals.dual += hrs;
+    totals.total += hrs; totals.xc += xc; totals.night += ngt; totals.inst += inst;
+    if (isSolo) totals.solo += hrs;
+    const v = n => n ? n.toFixed(1) : '<span style="color:var(--text3)">—</span>';
     return `<div class="sv-log-row">
       <div>
         <div style="font-size:13px;font-weight:500">${esc(db.lesson||db.airport||'Flight')}</div>
         <div style="font-size:11px;color:var(--text3)">${db.date||''}</div>
       </div>
-      <span class="sv-log-hrs val">${hrs||'—'}</span>
-      <span class="sv-log-hrs">${isSolo?hrs:''}</span>
-      <span class="sv-log-hrs">${''}</span>
-      <span class="sv-log-hrs">${''}</span>
-      <span class="sv-log-hrs">${''}</span>
+      <span class="sv-log-hrs val">${v(hrs)}</span>
+      <span class="sv-log-hrs">${isSolo ? v(hrs) : '<span style="color:var(--text3)">—</span>'}</span>
+      <span class="sv-log-hrs">${v(xc)}</span>
+      <span class="sv-log-hrs">${v(ngt)}</span>
+      <span class="sv-log-hrs">${v(inst)}</span>
     </div>`;
   }).join('');
   body.innerHTML = `<div class="card" style="margin-bottom:12px">
@@ -1188,7 +1195,9 @@ function renderSvLog(records, body) {
       <span>Totals</span>
       <span class="sv-log-hrs">${totals.total.toFixed(1)}</span>
       <span class="sv-log-hrs">${totals.solo.toFixed(1)}</span>
-      <span class="sv-log-hrs">—</span><span class="sv-log-hrs">—</span><span class="sv-log-hrs">—</span>
+      <span class="sv-log-hrs">${totals.xc.toFixed(1)}</span>
+      <span class="sv-log-hrs">${totals.night.toFixed(1)}</span>
+      <span class="sv-log-hrs">${totals.inst.toFixed(1)}</span>
     </div>
   </div>`;
 }
@@ -1468,6 +1477,9 @@ function collectDebrief() {
     airport:     document.getElementById("dbAirport").value,
     aircraft:    document.getElementById("dbAircraft").value,
     hours:       document.getElementById("dbHours").value,
+    xc:          document.getElementById("dbXC").value,
+    night:       document.getElementById("dbNight").value,
+    instrument:  document.getElementById("dbInstrument").value,
     lesson:      document.getElementById("dbLesson").value,
     sessionType: dbSessionType,
     rating:      dbRating,
@@ -1502,8 +1514,11 @@ function loadDebriefIntoForm(db) {
   document.getElementById("dbStudent").value  = db.student  || "";
   document.getElementById("dbAirport").value  = db.airport  || "";
   document.getElementById("dbAircraft").value = db.aircraft || "";
-  document.getElementById("dbHours").value    = db.hours    || "";
-  document.getElementById("dbLesson").value   = db.lesson   || "";
+  document.getElementById("dbHours").value      = db.hours      || "";
+  document.getElementById("dbXC").value         = db.xc         || "";
+  document.getElementById("dbNight").value      = db.night      || "";
+  document.getElementById("dbInstrument").value = db.instrument || "";
+  document.getElementById("dbLesson").value     = db.lesson     || "";
   document.getElementById("dbWentWell").value = db.wentWell || "";
   document.getElementById("dbNeedsWork").value= db.needsWork|| "";
   document.getElementById("dbNextTime").value = db.nextTime || "";
@@ -1519,7 +1534,7 @@ function loadDebriefIntoForm(db) {
 
 function newDebrief() {
   editingDebriefId = null;
-  ["dbStudent","dbAirport","dbAircraft","dbHours","dbLesson","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
+  ["dbStudent","dbAirport","dbAircraft","dbHours","dbXC","dbNight","dbInstrument","dbLesson","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
     .forEach(id => document.getElementById(id).value = "");
   setRating("");
   setSessionType("");
