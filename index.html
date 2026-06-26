@@ -237,6 +237,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .student-actions .danger-btn { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 7px 12px; font-size: 12px; font-weight: 500; color: var(--danger); cursor: pointer; font-family: inherit; margin-left: auto; }
 .student-actions .danger-btn:active { background: rgba(255,107,107,0.1); }
 .student-sel { background: transparent; border: none; color: var(--text); font-family: inherit; font-size: 14px; text-align: right; flex: 1; cursor: pointer; }
+.field-sel { -webkit-appearance: none; appearance: none; flex: 1; text-align: right; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E") no-repeat right 2px center; border: none; outline: none; color: var(--text); font-size: 14px; font-family: inherit; padding-right: 16px; min-width: 0; cursor: pointer; }
 
 /* ── SYLLABUS ── */
 .syl-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -479,7 +480,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 
   <p class="section-label">Client & invoice</p>
   <div class="card"><div class="field-group">
-    <div class="field-row"><span class="field-label">Bill to</span><input type="text" id="clientName" list="clientNameList" placeholder="Client name" autocomplete="off" /><datalist id="clientNameList"></datalist></div>
+    <div class="field-row"><span class="field-label">Bill to</span><select id="clientName" class="field-sel"><option value="">— select —</option></select></div>
     <div class="field-row"><span class="field-label">Invoice #</span><input type="text" id="invoiceNum" placeholder="001" /></div>
     <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="invoiceDateSel"></div></div>
   </div></div>
@@ -531,7 +532,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 
   <p class="section-label">Session info</p>
   <div class="card"><div class="field-group">
-    <div class="field-row"><span class="field-label">Student</span><input type="text" id="dbStudent" list="studentNameList" placeholder="Student name" autocomplete="off" /><datalist id="studentNameList"></datalist></div>
+    <div class="field-row"><span class="field-label">Student</span><select id="dbStudent" class="field-sel"><option value="">— select —</option></select></div>
     <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="debriefDateSel"></div></div>
     <div class="field-row"><span class="field-label">Airport</span><input type="text" id="dbAirport" placeholder="KXXX" /></div>
     <div class="field-row"><span class="field-label">Aircraft</span><input type="text" id="dbAircraft" placeholder="N12345" /></div>
@@ -2755,10 +2756,11 @@ function populateStudentSelects() {
     ...studentNames,
     ...students.map(s => s.billingName).filter(Boolean)
   ])];
-  const dl1 = document.getElementById('studentNameList');
-  if (dl1) dl1.innerHTML = studentNames.map(n => `<option value="${esc(n)}">`).join('');
-  const dl2 = document.getElementById('clientNameList');
-  if (dl2) dl2.innerHTML = clientNames.map(n => `<option value="${esc(n)}">`).join('');
+  const opts = names => ['', ...names].map(n => `<option value="${esc(n)}">${n || '— select —'}</option>`).join('');
+  const s1 = document.getElementById('dbStudent');
+  if (s1) { const cur = s1.value; s1.innerHTML = opts(studentNames); s1.value = cur; }
+  const s2 = document.getElementById('clientName');
+  if (s2) { const cur = s2.value; s2.innerHTML = opts(clientNames); s2.value = cur; }
 }
 
 bootApp();
