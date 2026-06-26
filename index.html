@@ -27,13 +27,35 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-se
 /* ── TAB BAR ── */
 .tab-bar { position: sticky; top: 0; z-index: 200; background: rgba(15,15,15,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 0.5px solid var(--border); padding-top: env(safe-area-inset-top); }
 .tab-bar-inner { display: flex; align-items: center; padding: 10px 16px 0; gap: 0; }
-.tab-logo { display: flex; align-items: center; gap: 8px; margin-right: 12px; padding-bottom: 10px; flex-shrink: 0; }
+.tab-logo { display: flex; align-items: center; gap: 8px; margin-right: 12px; padding-bottom: 10px; flex-shrink: 0; cursor: pointer; }
 .logo-mark { width: 26px; height: 26px; background: var(--accent); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
 .tab-logo span { font-size: 14px; font-weight: 700; letter-spacing: -0.3px; }
 .tabs { display: flex; flex: 1; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab-btn { flex-shrink: 0; padding: 8px 10px; font-size: 13px; font-weight: 500; font-family: inherit; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text2); cursor: pointer; white-space: nowrap; }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-btn.menu-only { display: none; }
+
+/* ── BURGER MENU ── */
+.menu-overlay { display: none; position: fixed; inset: 0; z-index: 300; }
+.menu-overlay.open { display: block; }
+.menu-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+.menu-sheet { position: absolute; top: 0; left: 0; bottom: 0; width: 240px; background: var(--surface); border-right: 0.5px solid var(--border2); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+.menu-header { display: flex; align-items: center; gap: 10px; padding: 18px 20px 14px; border-bottom: 0.5px solid var(--border); }
+.menu-header .logo-mark { width: 30px; height: 30px; font-size: 16px; }
+.menu-header span { font-size: 16px; font-weight: 700; }
+.menu-items { flex: 1; padding: 10px 0; overflow-y: auto; }
+.menu-item { display: flex; align-items: center; gap: 12px; padding: 14px 20px; font-size: 15px; font-weight: 500; color: var(--text2); cursor: pointer; border: none; background: none; font-family: inherit; width: 100%; text-align: left; }
+.menu-item:active { background: var(--surface2); }
+.menu-item.active { color: var(--accent); }
+.menu-item-icon { font-size: 18px; width: 24px; text-align: center; }
+.menu-sync { margin: 10px 16px; padding: 12px; background: var(--accent-dim); border: 0.5px solid rgba(200,240,160,0.3); border-radius: var(--radius); color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; }
+.menu-sync:active { opacity: 0.7; }
+
+@media (min-width: 700px) {
+  .tab-btn.menu-only { display: flex; }
+  .tab-logo { cursor: default; }
+}
 
 /* ── PAGES ── */
 .page { display: none; padding: 16px; padding-bottom: 40px; }
@@ -279,18 +301,36 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 
 <div class="tab-bar">
   <div class="tab-bar-inner">
-    <div class="tab-logo">
+    <div class="tab-logo" onclick="toggleMenu()">
       <div class="logo-mark">✈️</div>
       <span>CFI</span>
     </div>
     <div class="tabs">
       <button class="tab-btn active"  onclick="showTab('invoice')">Invoice</button>
       <button class="tab-btn"         onclick="showTab('debrief')">Debrief</button>
-      <button class="tab-btn"         onclick="showTab('students')">Students</button>
-      <button class="tab-btn"         onclick="showTab('syllabus')">Syllabus</button>
-      <button class="tab-btn"         onclick="showTab('resources')">Resources</button>
-      <button class="tab-btn"         onclick="showTab('history')">History</button>
+      <button class="tab-btn menu-only" onclick="showTab('students')">Students</button>
+      <button class="tab-btn menu-only" onclick="showTab('syllabus')">Syllabus</button>
+      <button class="tab-btn menu-only" onclick="showTab('resources')">Resources</button>
+      <button class="tab-btn menu-only" onclick="showTab('history')">History</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════ BURGER MENU ══════════ -->
+<div class="menu-overlay" id="menuOverlay">
+  <div class="menu-backdrop" onclick="closeMenu()"></div>
+  <div class="menu-sheet">
+    <div class="menu-header">
+      <div class="logo-mark">✈️</div>
+      <span>CFI Toolkit</span>
+    </div>
+    <div class="menu-items">
+      <button class="menu-item" onclick="menuNav('students')"><span class="menu-item-icon">👨‍🎓</span>Students</button>
+      <button class="menu-item" onclick="menuNav('syllabus')"><span class="menu-item-icon">📚</span>Syllabus</button>
+      <button class="menu-item" onclick="menuNav('resources')"><span class="menu-item-icon">📎</span>Resources</button>
+      <button class="menu-item" onclick="menuNav('history')"><span class="menu-item-icon">🕐</span>History</button>
+    </div>
+    <button class="menu-sync" onclick="forceSyncToCloud(); closeMenu()">Sync to Cloud ↑</button>
   </div>
 </div>
 
@@ -597,15 +637,31 @@ let resTotal     = 0;
 function showTab(tab) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".menu-item").forEach(b => b.classList.remove("active"));
   document.getElementById("page-" + tab).classList.add("active");
   const map = { invoice:"Invoice", debrief:"Debrief", students:"Students", syllabus:"Syllabus", resources:"Resources", history:"History" };
   document.querySelectorAll(".tab-btn").forEach(b => {
+    if (b.textContent.trim() === map[tab]) b.classList.add("active");
+  });
+  document.querySelectorAll(".menu-item").forEach(b => {
     if (b.textContent.trim() === map[tab]) b.classList.add("active");
   });
   if (tab === "history")  renderHistory();
   if (tab === "resources") renderResourcesTab();
   if (tab === "students") renderStudents();
   if (tab === "syllabus") renderSyllabusTab();
+}
+
+function toggleMenu() {
+  if (window.innerWidth >= 700) return;
+  document.getElementById("menuOverlay").classList.toggle("open");
+}
+function closeMenu() {
+  document.getElementById("menuOverlay").classList.remove("open");
+}
+function menuNav(tab) {
+  closeMenu();
+  showTab(tab);
 }
 
 /* ══════════════════════════════════════
