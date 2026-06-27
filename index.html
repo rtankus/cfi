@@ -1708,6 +1708,7 @@ let attachments = [];
 let dbRating      = "";
 let dbSessionType = "";
 let editingDebriefId = null;
+let _pendingSchedItemId = null;
 let historyFilter = "all";
 let historyStudentFilter = "";
 
@@ -1769,6 +1770,13 @@ function renderCFIHome() {
   });
 
   allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
+
+  const debriefBySchedId = {}, invoiceBySchedId = {};
+  getHistory().forEach(r => {
+    if (!r.schedItemId) return;
+    if (r.type === 'debrief') debriefBySchedId[r.schedItemId] = r.id;
+    else if (r.type === 'invoice') invoiceBySchedId[r.schedItemId] = r.id;
+  });
 
   if (!allItems.length) {
     body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.<br><br><button onclick="openAddLesson()" style="background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;padding:10px 20px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Add First Lesson</button></div>';
@@ -1853,8 +1861,18 @@ async function saveAddLesson() {
   notifyStudent(stu.email, 'schedule', newItem);
 }
 
-function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType) {
+function openSchedDebrief(recordId) {
+  const db = getHistory().find(r => r.id === recordId);
+  if (db) loadDebriefIntoForm(db);
+}
+function openSchedInvoice(recordId) {
+  const inv = getHistory().find(r => r.id === recordId);
+  if (inv) loadInvoiceIntoForm(inv);
+}
+
+function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType, itemId) {
   newDebrief();
+  _pendingSchedItemId = itemId || null;
   const stuSel = document.getElementById('dbStudent');
   if (stuSel) stuSel.value = studentName;
   if (aircraft) document.getElementById('dbAircraft').value = aircraft;
@@ -1863,8 +1881,9 @@ function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType) {
   if (sessionType) setSessionType(sessionType);
 }
 
-function cfiHomeInvoice(studentName) {
+function cfiHomeInvoice(studentName, itemId) {
   newInvoice();
+  _pendingSchedItemId = itemId || null;
   const clientSel = document.getElementById('clientName');
   if (clientSel) clientSel.value = studentName;
 }
@@ -2095,7 +2114,7 @@ function setSessionType(t) {
 
 function collectDebrief() {
   return {
-    id: editingDebriefId || Date.now(), type: "debrief", savedAt: new Date().toISOString(),
+    id: editingDebriefId || Date.now(), type: "debrief", savedAt: new Date().toISOString(), schedItemId: _pendingSchedItemId || undefined,
     student:     document.getElementById("dbStudent").value,
     date:        getDateFromSel("debriefDateSel"),
     airport:     document.getElementById("dbAirport").value,
@@ -2138,6 +2157,7 @@ function saveDebrief() {
 function loadDebriefIntoForm(db) {
   db = cleanDebriefText(db);
   editingDebriefId = db.id;
+  _pendingSchedItemId = db.schedItemId || null;
   document.getElementById("dbStudent").value  = db.student  || "";
   document.getElementById("dbAirport").value  = db.airport  || "";
   document.getElementById("dbAircraft").value = db.aircraft || "";
@@ -2162,6 +2182,7 @@ function loadDebriefIntoForm(db) {
 
 function newDebrief() {
   editingDebriefId = null;
+  _pendingSchedItemId = null;
   ["dbStudent","dbAirport","dbAircraft","dbHours","dbXC","dbNight","dbInstrument","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
     .forEach(id => document.getElementById(id).value = "");
   setDbLesson(null, "");
@@ -2459,7 +2480,7 @@ function collectCurrentInvoice() {
   const sub=lineItems.reduce((s,it)=>s+(it.rate*it.qty),0);
   const tax=parseFloat(document.getElementById("taxAmount").value)||0;
   return {
-    id:Date.now(), type:"invoice", savedAt:new Date().toISOString(),
+    id:Date.now(), type:"invoice", savedAt:new Date().toISOString(), schedItemId: _pendingSchedItemId || undefined,
     biz:document.getElementById("bizName").value,
     web:document.getElementById("bizWeb").value,
     phone:document.getElementById("bizPhone").value,
@@ -2476,6 +2497,7 @@ function collectCurrentInvoice() {
 }
 
 function loadInvoiceIntoForm(inv) {
+  _pendingSchedItemId = inv.schedItemId || null;
   document.getElementById("bizName").value   = inv.biz   ||"";
   document.getElementById("bizWeb").value    = inv.web   ||"";
   document.getElementById("bizPhone").value  = inv.phone ||"";
@@ -2494,6 +2516,7 @@ function loadInvoiceIntoForm(inv) {
 }
 
 function newInvoice() {
+  _pendingSchedItemId = null;
   document.getElementById("clientName").value="";
   document.getElementById("invoiceNum").value="";
   document.getElementById("notes").value="";
@@ -3201,7 +3224,7 @@ async function handleSyllabusUpload(input) {
     showToast("Loading PDF…");
     const buffer = await file.arrayBuffer();
     await ensurePDFJS();
-    const typed  = new Uint8Array(buffer);
+    const typed  = new Uint8Array(buffer.slice(0)); // slice so PDF.js worker transfer doesn't detach buffer
     const tmpDoc = await window.pdfjsLib.getDocument({ data: typed }).promise;
     const pageCount = tmpDoc.numPages;
     const id   = Date.now();
@@ -3419,7 +3442,7 @@ async function handleResourceUpload(input) {
     showToast("Loading PDF…");
     const buffer = await file.arrayBuffer();
     await ensurePDFJS();
-    const typed   = new Uint8Array(buffer);
+    const typed   = new Uint8Array(buffer.slice(0)); // slice so PDF.js worker transfer doesn't detach buffer
     const tmpDoc  = await window.pdfjsLib.getDocument({ data: typed }).promise;
     const pageCount = tmpDoc.numPages;
     const id   = Date.now();
