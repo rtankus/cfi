@@ -394,6 +394,17 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-pay-badge.paid { background: var(--accent-dim); color: var(--accent); }
 .sv-pay-badge.unpaid { background: rgba(255,107,107,0.15); color: var(--danger); }
 .mark-paid-btn { font-size: 11px; background: var(--accent-dim); border: 0.5px solid rgba(200,240,160,0.3); border-radius: 10px; padding: 3px 9px; color: var(--accent); cursor: pointer; font-family: inherit; font-weight: 600; }
+
+/* ── ADD LESSON SHEET ── */
+.al-overlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.55); }
+.al-overlay.open { display: block; }
+.al-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 16px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); max-height: 90dvh; overflow-y: auto; }
+.al-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.al-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.al-field { flex: 1; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 14px; color: var(--text); font-family: inherit; outline: none; -webkit-appearance: none; appearance: none; min-width: 0; }
+.al-field::placeholder { color: var(--text3); }
+.al-save { width: 100%; padding: 14px; background: var(--accent); color: var(--accent-text); border: none; border-radius: var(--radius); font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; margin-top: 4px; }
+.al-save:active { opacity: 0.8; }
 </style>
 </head>
 <body>
@@ -438,8 +449,8 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <span>CFI</span>
     </div>
     <div class="tabs">
-      <button class="tab-btn"         onclick="showTab('home')">Home</button>
-      <button class="tab-btn active"  onclick="showTab('invoice')">Invoice</button>
+      <button class="tab-btn active"  onclick="showTab('home')">Home</button>
+      <button class="tab-btn"         onclick="showTab('invoice')">Invoice</button>
       <button class="tab-btn"         onclick="showTab('debrief')">Debrief</button>
       <button class="tab-btn menu-only" onclick="showTab('students')">Students</button>
       <button class="tab-btn menu-only" onclick="showTab('syllabus')">Syllabus</button>
@@ -472,16 +483,16 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 </div>
 
 <!-- ══════════ HOME PAGE ══════════ -->
-<div class="page" id="page-home">
+<div class="page active" id="page-home">
   <div class="page-header">
     <span class="page-title">My Schedule</span>
-    <button class="ghost-btn" onclick="renderCFIHome()">Refresh</button>
+    <button class="accent-btn" onclick="openAddLesson()">+ Add Lesson</button>
   </div>
   <div id="cfiHomeBody"></div>
 </div>
 
 <!-- ══════════ INVOICE PAGE ══════════ -->
-<div class="page active" id="page-invoice">
+<div class="page" id="page-invoice">
   <div class="page-header">
     <span class="page-title">New Invoice</span>
     <div style="display:flex;gap:6px">
@@ -707,6 +718,34 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 
 <div class="toast" id="toast"></div>
 
+<!-- ══════════ ADD LESSON SHEET ══════════ -->
+<div class="al-overlay" id="addLessonOverlay" onclick="closeAddLesson()">
+  <div class="al-sheet" onclick="event.stopPropagation()">
+    <div class="al-title">Add Lesson</div>
+    <div class="al-row">
+      <select class="al-field" id="alStudent"></select>
+    </div>
+    <div class="al-row">
+      <input class="al-field" id="alDate" type="date">
+      <input class="al-field" id="alTime" type="time">
+    </div>
+    <div class="al-row">
+      <select class="al-field" id="alType" style="flex:0 0 auto;width:140px">
+        <option value="flight">✈ Flight</option>
+        <option value="ground">📚 Ground</option>
+      </select>
+      <input class="al-field" id="alAircraft" type="text" placeholder="N-number (opt.)">
+    </div>
+    <div class="al-row">
+      <input class="al-field" id="alTopic" type="text" placeholder="Topic / lesson name">
+    </div>
+    <div class="al-row">
+      <textarea class="al-field" id="alNotes" placeholder="Notes for student… (opt.)" style="min-height:64px;resize:none;line-height:1.5"></textarea>
+    </div>
+    <button class="al-save" onclick="saveAddLesson()">Add to Schedule</button>
+  </div>
+</div>
+
 <!-- ══════════ STUDENT PDF VIEWER ══════════ -->
 <div id="svPdfOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:var(--bg);flex-direction:column">
   <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:0.5px solid var(--border);background:rgba(15,15,15,0.95);flex-shrink:0">
@@ -860,19 +899,21 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 async function _pushStudentRecord(record) {
   if (!_sbUser) return;
   const students = getStudents();
-  // Match by student name (debriefs) or client/billing name (invoices)
+  const name = record.student || record.client || '';
   const stu = students.find(s =>
-    s.name === (record.student || record.client) ||
+    s.name === name ||
     (s.billingName && s.billingName === record.client)
   );
-  if (!stu || !stu.email) return;
-  await _sb.from('student_records').upsert({
+  if (!stu) { console.warn('[push] no student matched for', name); return; }
+  if (!stu.email) { console.warn('[push] student has no email:', stu.name); showToast('Add email for ' + stu.name + ' to sync'); return; }
+  const { error } = await _sb.from('student_records').upsert({
     id: String(record.id),
     student_email: stu.email.trim().toLowerCase(),
     record_type: record.type || 'invoice',
     data: record,
     updated_at: new Date().toISOString()
   });
+  if (error) { console.error('[push] supabase error:', error); showToast('Sync error: ' + error.message); }
 }
 
 /* ── Sync all existing history records for a student ── */
@@ -1616,7 +1657,7 @@ function renderCFIHome() {
   allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
 
   if (!allItems.length) {
-    body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.</div>';
+    body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.<br><br><button onclick="openAddLesson()" style="background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;padding:10px 20px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Add First Lesson</button></div>';
     return;
   }
 
@@ -1647,11 +1688,52 @@ function renderCFIHome() {
       <div style="display:flex;gap:6px;margin-top:8px">
         <button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>
         <button onclick="cfiHomeInvoice('${esc(item.studentName||'')}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>
+        <button onclick="openAddLesson('${esc(item.studentName||'')}')" style="padding:7px 10px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;color:var(--text2);font-family:inherit;cursor:pointer">+ Lesson</button>
       </div>
     </div>`;
   });
   if (lastDate) html += '</div>';
   body.innerHTML = html;
+}
+
+function openAddLesson(prefillStudentName) {
+  const students = getStudents();
+  const sel = document.getElementById('alStudent');
+  sel.innerHTML = students.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  if (prefillStudentName) {
+    const match = students.find(s => s.name === prefillStudentName);
+    if (match) sel.value = match.id;
+  }
+  document.getElementById('alDate').value = todayStr();
+  document.getElementById('alTime').value = '';
+  document.getElementById('alType').value = 'flight';
+  document.getElementById('alAircraft').value = '';
+  document.getElementById('alTopic').value = '';
+  document.getElementById('alNotes').value = '';
+  document.getElementById('addLessonOverlay').classList.add('open');
+}
+
+function closeAddLesson() {
+  document.getElementById('addLessonOverlay').classList.remove('open');
+}
+
+function saveAddLesson() {
+  const students = getStudents();
+  const sid = parseInt(document.getElementById('alStudent').value);
+  const stu = students.find(s => s.id === sid);
+  if (!stu) { showToast('Select a student'); return; }
+  const date    = document.getElementById('alDate').value;
+  const time    = document.getElementById('alTime').value;
+  const type    = document.getElementById('alType').value;
+  const aircraft = document.getElementById('alAircraft').value.trim();
+  const topic   = document.getElementById('alTopic').value.trim();
+  const notes   = document.getElementById('alNotes').value.trim();
+  const data = getStuSched(sid);
+  data.items.push({ id: String(Date.now()), date, time, type, aircraft, topic, notes, status: 'scheduled' });
+  saveStuSched(sid, data, stu.email);
+  closeAddLesson();
+  renderCFIHome();
+  showToast('Lesson added ✓');
 }
 
 function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType) {
@@ -3284,6 +3366,7 @@ function initApp() {
   renderLineItems();
   buildLessonSelect();
   populateStudentSelects();
+  showTab('home');
 }
 
 function populateStudentSelects() {
