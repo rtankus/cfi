@@ -304,6 +304,10 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .sv-body { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 .sv-signout { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 6px 12px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
+.sv-theme-btn { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 5px 9px; font-size: 14px; cursor: pointer; line-height: 1; }
+#studentScreen.light { --bg: #f0f0f0; --surface: #ffffff; --surface2: #f5f5f5; --surface3: #ebebeb; --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18); --text: #1a1a1a; --text2: #555; --text3: #999; }
+#studentScreen.light .sv-header { background: rgba(240,240,240,0.95); }
+#studentScreen.light input, #studentScreen.light select, #studentScreen.light textarea { color: var(--text); background: var(--surface); }
 .sv-card { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); margin-bottom: 10px; overflow: hidden; }
 .sv-card-header { padding: 12px 14px 8px; border-bottom: 0.5px solid var(--border); }
 .sv-card-meta { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
@@ -348,7 +352,10 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 /* ── CHECKLIST ── */
 .check-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 0.5px solid var(--border); }
 .check-item:last-child { border-bottom: none; }
+.check-item input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
 .check-item input[type=text] { flex: 1; background: transparent; border: none; outline: none; font-size: 14px; color: var(--text); font-family: inherit; text-align: left; }
+.check-item.done input[type=text] { text-decoration: line-through; color: var(--text3); }
+.check-item-done-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 8px; background: var(--accent-dim); color: var(--accent); white-space: nowrap; flex-shrink: 0; }
 .check-add-btn { width: calc(100% - 28px); margin: 10px 14px 0; padding: 10px; background: transparent; border: 0.5px dashed var(--border2); border-radius: var(--radius-sm); color: var(--text2); font-size: 13px; font-family: inherit; cursor: pointer; }
 
 /* ── SYLLABUS TRACKER ── */
@@ -429,7 +436,13 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
         <div class="logo-mark">✈️</div>
         <span style="font-size:14px;font-weight:700" id="svStudentName">My Training</span>
       </div>
-      <button class="sv-signout" onclick="doSignOut()">Sign Out</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="sv-signout" onclick="refreshStudentView(true)">↻</button>
+        <div style="display:flex;align-items:center;gap:8px">
+        <button class="sv-theme-btn" id="svThemeBtn" onclick="toggleSvTheme()">🌙</button>
+        <button class="sv-signout" onclick="doSignOut()">Sign Out</button>
+      </div>
+      </div>
     </div>
     <div class="sv-tabs">
       <button class="sv-tab active" id="svTabHome"      onclick="svShowTab('home')">Home</button>
@@ -475,6 +488,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <button class="menu-item" onclick="menuNav('syllabus')"><span class="menu-item-icon">📚</span>Syllabus</button>
       <button class="menu-item" onclick="menuNav('resources')"><span class="menu-item-icon">📎</span>Resources</button>
       <button class="menu-item" onclick="menuNav('history')"><span class="menu-item-icon">🕐</span>History</button>
+      <button class="menu-item" onclick="menuNav('payments')"><span class="menu-item-icon">💰</span>My Pay</button>
     </div>
     <button class="menu-sync" onclick="forceSyncToCloud(); closeMenu()">Sync to Cloud ↑</button>
     <button class="menu-sync" style="margin-top:6px;background:var(--surface2);border-color:var(--border2);color:var(--text2)" onclick="location.reload(true)">Reload App</button>
@@ -716,6 +730,19 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 </div>
 
 
+<!-- ══════════ PAYMENTS PAGE ══════════ -->
+<div class="page" id="page-payments">
+  <div class="page-header">
+    <span class="page-title">My Earnings</span>
+    <select id="payPeriodSel" onchange="renderPayments()" style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;padding:6px 12px;font-size:13px;color:var(--text);font-family:inherit;cursor:pointer;-webkit-appearance:none;appearance:none">
+      <option value="all">All time</option>
+      <option value="year">This year</option>
+      <option value="month">This month</option>
+    </select>
+  </div>
+  <div id="paymentsBody"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- ══════════ ADD LESSON SHEET ══════════ -->
@@ -821,6 +848,13 @@ async function doSignOut() {
   _sbUser = null;
 }
 
+function toggleSvTheme() {
+  const screen = document.getElementById('studentScreen');
+  const isLight = screen.classList.toggle('light');
+  document.getElementById('svThemeBtn').textContent = isLight ? '☀️' : '🌙';
+  localStorage.setItem('sv-theme', isLight ? 'light' : 'dark');
+}
+
 async function bootApp() {
   const { data: { user } } = await _sb.auth.getUser();
   if (!user) {
@@ -843,16 +877,37 @@ async function bootApp() {
 
 /* ── Student view ── */
 async function loadStudentView(email) {
+  window._svEmail = email;
   const screen = document.getElementById('studentScreen');
+  const savedTheme = localStorage.getItem('sv-theme');
+  screen.classList.toggle('light', savedTheme === 'light');
+  document.getElementById('svThemeBtn').textContent = savedTheme === 'light' ? '☀️' : '🌙';
   screen.classList.add('active');
-  document.getElementById('svBody').innerHTML = '<div class="sv-empty">Loading…</div>';
+  await refreshStudentView(true);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && window._svEmail) refreshStudentView(false);
+  });
+}
+
+async function refreshStudentView(showLoading) {
+  const email = window._svEmail;
+  if (!email) return;
+  if (showLoading) document.getElementById('svBody').innerHTML = '<div class="sv-empty">Loading…</div>';
   const [{ data: personal, error }, { data: shared }] = await Promise.all([
     _sb.from('student_records').select('*').eq('student_email', email),
     _sb.from('student_records').select('*').eq('student_email', 'shared'),
   ]);
-  if (error) { document.getElementById('svBody').innerHTML = '<div class="sv-empty">Could not load data.</div>'; return; }
+  if (error) { if (showLoading) document.getElementById('svBody').innerHTML = '<div class="sv-empty">Could not load data.</div>'; return; }
   window._svRecords = [...(personal || []), ...(shared || [])];
-  svShowTab('home');
+  renderStudentView();
+}
+
+/* ── Direct student notification via edge function ── */
+async function notifyStudent(email, recordType, data) {
+  if (!_sbUser || !email) return;
+  try {
+    await _sb.functions.invoke('notify-student', { body: { direct: true, record_type: recordType, student_email: email.trim().toLowerCase(), data } });
+  } catch(e) { console.warn('[notify]', e); }
 }
 
 const RATING_CLASS = { 'Tough day':'tough', 'Needs review':'needs-review', 'Solid':'solid', 'Great flight!':'great' };
@@ -1052,15 +1107,21 @@ function getStuSched(sid)   { try { return JSON.parse(_cache[`stu_sched_${sid}`]
 function getStuCheck(sid)   { try { return JSON.parse(_cache[`stu_check_${sid}`]||'{"items":[]}'); } catch { return {items:[]}; } }
 function getStuSyl(sid)     { try { return JSON.parse(_cache[`stu_syl_${sid}`]||'{}'); } catch { return {}; } }
 
-function saveStuSched(sid, data, email) {
+async function saveStuSched(sid, data, email) {
   const v = JSON.stringify(data);
   _syncKV(`stu_sched_${sid}`, v);
-  if (_sbUser && email) _sb.from('student_records').upsert({ id:`sched_${sid}`, student_email: email.trim().toLowerCase(), record_type:'schedule', data, updated_at: new Date().toISOString() });
+  if (_sbUser && email) {
+    const { error } = await _sb.from('student_records').upsert({ id:`sched_${sid}`, student_email: email.trim().toLowerCase(), record_type:'schedule', data, updated_at: new Date().toISOString() });
+    if (error) { console.error('[saveStuSched]', error); showToast('Schedule sync error: ' + error.message); }
+  }
 }
-function saveStuCheck(sid, data, email) {
+async function saveStuCheck(sid, data, email) {
   const v = JSON.stringify(data);
   _syncKV(`stu_check_${sid}`, v);
-  if (_sbUser && email) _sb.from('student_records').upsert({ id:`check_${sid}`, student_email: email.trim().toLowerCase(), record_type:'checklist', data, updated_at: new Date().toISOString() });
+  if (_sbUser && email) {
+    const { error } = await _sb.from('student_records').upsert({ id:`check_${sid}`, student_email: email.trim().toLowerCase(), record_type:'checklist', data, updated_at: new Date().toISOString() });
+    if (error) { console.error('[saveStuCheck]', error); showToast('Checklist sync error: ' + error.message); }
+  }
 }
 function saveStuSyl(sid, data, email) {
   const v = JSON.stringify(data);
@@ -1115,10 +1176,12 @@ function renderStuSched(sid) {
       <button class="ghost-btn" style="font-size:12px;padding:5px 12px;margin-top:2px" onclick="exportToCalendar(${JSON.stringify(item).replace(/"/g,'&quot;')})">+ Calendar</button>
     </div>`).join('');
 }
-function addScheduleItem(sid) {
+async function addScheduleItem(sid) {
+  const email = getStuEmail(sid);
+  const newItem = { id: String(Date.now()), date:'', time:'', type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled' };
   const data = getStuSched(sid);
-  data.items.push({ id: String(Date.now()), date:'', time:'', type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled' });
-  saveStuSched(sid, data, getStuEmail(sid));
+  data.items.push(newItem);
+  await saveStuSched(sid, data, email);
   renderStuSched(sid);
 }
 function updateSchedItem(sid, itemId, field, val) {
@@ -1138,24 +1201,44 @@ function removeSchedItem(sid, itemId) {
 function renderStuCheck(sid) {
   const data = getStuCheck(sid);
   const el = document.getElementById(`stu-check-list-${sid}`);
-  if (!data.items.length) { el.innerHTML = '<div style="padding:12px 14px;font-size:13px;color:var(--text3)">No items yet — add assignments below.</div>'; return; }
-  el.innerHTML = data.items.map(item => `
-    <div class="check-item">
+  if (!data.items.length) { el.innerHTML = '<div style="padding:12px 14px;font-size:13px;color:var(--text3)">No items yet — add tasks below.</div>'; return; }
+  el.innerHTML = data.items.map(item => {
+    const done = item.done || false;
+    const badge = done ? '<span class="check-item-done-badge">✓ Done</span>' : '';
+    return `<div class="check-item${done?' done':''}">
+      <input type="checkbox" ${done?'checked':''} onchange="toggleCheckItemDone(${sid},'${item.id}',this.checked)">
       <input type="text" value="${esc(item.text||'')}" placeholder="Assignment or task…" onchange="updateCheckItem(${sid},'${item.id}',this.value)">
+      ${badge}
       <button class="remove-btn" onclick="removeCheckItem(${sid},'${item.id}')">×</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
-function addChecklistItem(sid) {
+async function submitChecklistItems(sid) {
+  const email = getStuEmail(sid);
+  const textarea = document.getElementById(`stu-check-input-${sid}`);
+  const lines = (textarea.value || '').split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { showToast('Type at least one task'); return; }
   const data = getStuCheck(sid);
-  data.items.push({ id: String(Date.now()), text:'' });
-  saveStuCheck(sid, data, getStuEmail(sid));
+  const now = Date.now();
+  lines.forEach((text, i) => data.items.push({ id: String(now + i), text, done: false }));
+  await saveStuCheck(sid, data, email);
+  textarea.value = '';
   renderStuCheck(sid);
+  showToast(`${lines.length} task${lines.length > 1 ? 's' : ''} added ✓`);
+  if (email) lines.forEach(text => notifyStudent(email, 'checklist', { text }));
 }
 function updateCheckItem(sid, itemId, val) {
   const data = getStuCheck(sid);
   const item = data.items.find(i => i.id === itemId);
   if (item) item.text = val;
   saveStuCheck(sid, data, getStuEmail(sid));
+}
+function toggleCheckItemDone(sid, itemId, checked) {
+  const data = getStuCheck(sid);
+  const item = data.items.find(i => i.id === itemId);
+  if (item) item.done = checked;
+  saveStuCheck(sid, data, getStuEmail(sid));
+  renderStuCheck(sid);
 }
 function removeCheckItem(sid, itemId) {
   const data = getStuCheck(sid);
@@ -1336,7 +1419,6 @@ function renderSvHome(records, body) {
     .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
   const nextFlight = upcoming[0];
   const checkItems = (checkRec?.data?.items || []);
-  const storedDone = JSON.parse(localStorage.getItem('sv_check_done') || '{}');
 
   const nextLabel = nextFlight ? (nextFlight.type === 'ground' ? 'Next Ground Lesson' : 'Next Flight') : '';
   const nextHtml = nextFlight ? `
@@ -1349,10 +1431,10 @@ function renderSvHome(records, body) {
     </div>` : '';
 
   const checkHtml = checkItems.length ? `
-    <div class="section-label">Before Next Flight</div>
+    <div class="section-label">To Do</div>
     <div class="card" style="margin-bottom:12px">
       ${checkItems.map(item => {
-        const done = storedDone[item.id] || false;
+        const done = item.done || false;
         return `<div class="sv-check-item ${done?'done':''}" id="svci-${item.id}">
           <input type="checkbox" ${done?'checked':''} onchange="svToggleCheck('${item.id}',this.checked)">
           <label onclick="svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${esc(item.text)}</label>
@@ -1373,14 +1455,27 @@ function renderSvHome(records, body) {
     (!nextHtml && !checkHtml ? '<div class="sv-empty">Nothing scheduled yet.</div>' : '');
 }
 
-function svToggleCheck(itemId, checked) {
-  const stored = JSON.parse(localStorage.getItem('sv_check_done') || '{}');
-  stored[itemId] = checked;
-  localStorage.setItem('sv_check_done', JSON.stringify(stored));
+async function svToggleCheck(itemId, checked) {
+  const rec = (window._svRecords || []).find(r => r.record_type === 'checklist');
+  if (!rec) return;
+  const item = rec.data.items.find(i => i.id === itemId);
+  if (!item) return;
+  item.done = checked;
+
   const row = document.getElementById(`svci-${itemId}`);
   if (row) {
     row.classList.toggle('done', checked);
     row.querySelector('input').checked = checked;
+  }
+
+  if (_sbUser) {
+    await _sb.from('student_records').upsert({
+      id: rec.id,
+      student_email: _sbUser.email.trim().toLowerCase(),
+      record_type: 'checklist',
+      data: rec.data,
+      updated_at: new Date().toISOString()
+    });
   }
 }
 
@@ -1621,7 +1716,7 @@ function showTab(tab) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".menu-item").forEach(b => b.classList.remove("active"));
   document.getElementById("page-" + tab).classList.add("active");
-  const map = { home:"Home", invoice:"Invoice", debrief:"Debrief", students:"Students", syllabus:"Syllabus", resources:"Resources", history:"History" };
+  const map = { home:"Home", invoice:"Invoice", debrief:"Debrief", students:"Students", syllabus:"Syllabus", resources:"Resources", history:"History", payments:"My Pay" };
   document.querySelectorAll(".tab-btn").forEach(b => {
     if (b.textContent.trim() === map[tab]) b.classList.add("active");
   });
@@ -1633,6 +1728,7 @@ function showTab(tab) {
   if (tab === "resources") renderResourcesTab();
   if (tab === "students") renderStudents();
   if (tab === "syllabus") renderSyllabusTab();
+  if (tab === "payments") renderPayments();
 }
 
 /* ══════════════════════════════════════
@@ -1717,23 +1813,26 @@ function closeAddLesson() {
   document.getElementById('addLessonOverlay').classList.remove('open');
 }
 
-function saveAddLesson() {
+async function saveAddLesson() {
   const students = getStudents();
   const sid = parseInt(document.getElementById('alStudent').value);
   const stu = students.find(s => s.id === sid);
   if (!stu) { showToast('Select a student'); return; }
+  if (!stu.email) { showToast('Add an email for ' + stu.name + ' first'); return; }
   const date    = document.getElementById('alDate').value;
   const time    = document.getElementById('alTime').value;
   const type    = document.getElementById('alType').value;
   const aircraft = document.getElementById('alAircraft').value.trim();
   const topic   = document.getElementById('alTopic').value.trim();
   const notes   = document.getElementById('alNotes').value.trim();
+  const newItem = { id: String(Date.now()), date, time, type, aircraft, topic, notes, status: 'scheduled' };
   const data = getStuSched(sid);
-  data.items.push({ id: String(Date.now()), date, time, type, aircraft, topic, notes, status: 'scheduled' });
-  saveStuSched(sid, data, stu.email);
+  data.items.push(newItem);
+  await saveStuSched(sid, data, stu.email);
   closeAddLesson();
   renderCFIHome();
   showToast('Lesson added ✓');
+  notifyStudent(stu.email, 'schedule', newItem);
 }
 
 function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType) {
@@ -2236,6 +2335,103 @@ function deleteRecord(e,id) {
   saveHistory(getHistory().filter(r=>r.id!==id));
   renderHistory();
   showToast("Deleted");
+}
+
+/* ══════════════════════════════════════
+   MY PAYMENTS
+══════════════════════════════════════ */
+function myEarnings(inv) {
+  if (!inv.lineItems) return 0;
+  return inv.lineItems.reduce((s, it) => {
+    const n = (it.name || "").toLowerCase();
+    if (n.includes("flight instruction") || n.includes("ground instruction")) {
+      return s + (it.rate * it.qty);
+    }
+    return s;
+  }, 0);
+}
+
+function renderPayments() {
+  const body = document.getElementById("paymentsBody");
+  if (!body) return;
+  const period = (document.getElementById("payPeriodSel") || {}).value || "all";
+  const today = new Date();
+  const thisYear  = today.getFullYear();
+  const thisMonth = today.getMonth();
+
+  const invoices = getHistory().filter(r => !r.type || r.type === "invoice");
+
+  function inPeriod(inv) {
+    if (period === "all") return true;
+    const d = new Date(inv.invDate || inv.savedAt);
+    if (period === "year")  return d.getFullYear() === thisYear;
+    if (period === "month") return d.getFullYear() === thisYear && d.getMonth() === thisMonth;
+    return true;
+  }
+
+  const filtered = invoices.filter(inPeriod);
+  const totalEarned  = filtered.reduce((s, inv) => s + myEarnings(inv), 0);
+  const paidEarned   = filtered.filter(inv => inv.paid).reduce((s, inv) => s + myEarnings(inv), 0);
+  const unpaidEarned = totalEarned - paidEarned;
+
+  const byMonth = {};
+  filtered.forEach(inv => {
+    const d = new Date(inv.invDate || inv.savedAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if (!byMonth[key]) byMonth[key] = { label: d.toLocaleString("default",{month:"long",year:"numeric"}), invoices: [] };
+    byMonth[key].invoices.push(inv);
+  });
+  const monthKeys = Object.keys(byMonth).sort().reverse();
+
+  const statCard = (label, value, color) =>
+    `<div style="flex:1;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text3);margin-bottom:6px">${label}</div>
+      <div style="font-size:20px;font-weight:700;color:${color}">$${value.toFixed(2)}</div>
+    </div>`;
+
+  let html = `<div style="display:flex;gap:8px;margin-bottom:16px">
+    ${statCard("Earned", totalEarned, "var(--accent)")}
+    ${statCard("Paid", paidEarned, "var(--accent)")}
+    ${statCard("Unpaid", unpaidEarned, unpaidEarned > 0 ? "var(--danger)" : "var(--text2)")}
+  </div>`;
+
+  if (!filtered.length) {
+    html += `<div class="history-empty"><div class="icon">&#x1F4B0;</div><p>No invoices in this period.</p></div>`;
+    body.innerHTML = html;
+    return;
+  }
+
+  monthKeys.forEach(key => {
+    const { label, invoices: invs } = byMonth[key];
+    const monthTotal = invs.reduce((s, inv) => s + myEarnings(inv), 0);
+    html += `<div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
+      <span>${label}</span><span style="color:var(--accent);font-size:13px;font-weight:700">$${monthTotal.toFixed(2)}</span>
+    </div>`;
+    html += `<div class="card" style="margin-bottom:12px">`;
+    invs.sort((a,b) => (b.invDate||"").localeCompare(a.invDate||"")).forEach((inv, i) => {
+      const earned = myEarnings(inv);
+      const flt = (inv.lineItems||[]).find(it => (it.name||"").toLowerCase().includes("flight instruction"));
+      const gnd = (inv.lineItems||[]).find(it => (it.name||"").toLowerCase().includes("ground instruction"));
+      const detail = [
+        flt && flt.qty > 0 ? `Flight ${flt.qty}hr @ $${flt.rate}` : null,
+        gnd && gnd.qty > 0 ? `Ground ${gnd.qty}hr @ $${gnd.rate}` : null,
+      ].filter(Boolean).join(" \xB7 ");
+      if (i > 0) html += `<div style="height:0.5px;background:var(--border);margin:0 14px"></div>`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;gap:8px">
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:600">${esc(inv.client||"No client")}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${fmtDate(inv.invDate)||"No date"}${detail ? " \xB7 "+detail : ""}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="font-size:16px;font-weight:700;color:${earned>0?"var(--accent)":"var(--text2)"}">$${earned.toFixed(2)}</span>
+          ${inv.paid ? '<span class="sv-pay-badge paid">Paid</span>' : `<button class="mark-paid-btn" onclick="markInvoicePaid(${inv.id});renderPayments()">Mark Paid</button>`}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  body.innerHTML = html;
 }
 
 /* ══════════════════════════════════════
@@ -2743,8 +2939,10 @@ function renderStudents() {
           </div>
           <div class="stu-inner-section" id="stu-checklist-${s.id}">
             <div id="stu-check-list-${s.id}"></div>
-            <button class="check-add-btn" onclick="addChecklistItem(${s.id})">+ Add item</button>
-            <div style="padding:8px 14px 14px"></div>
+            <div style="padding:10px 14px 14px">
+              <textarea id="stu-check-input-${s.id}" class="sched-notes" placeholder="Type tasks here, one per line…" style="min-height:72px;margin-bottom:8px"></textarea>
+              <button class="new-btn" style="margin-bottom:0" onclick="submitChecklistItems(${s.id})">Add Tasks</button>
+            </div>
           </div>
           <div class="stu-inner-section" id="stu-syllabus-${s.id}">
             <div id="stu-syl-list-${s.id}"></div>

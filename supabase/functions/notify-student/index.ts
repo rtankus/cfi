@@ -28,37 +28,62 @@ interface WebhookPayload {
   old_record: null | Record<string, unknown>;
 }
 
-serve(async (req: Request) => {
-  const payload: WebhookPayload = await req.json();
+interface DirectPayload {
+  direct: true;
+  record_type: string;
+  student_email: string;
+  data: Record<string, unknown>;
+}
 
-  // Only act on new records (upsert fires INSERT for new rows, UPDATE for edits)
-  if (payload.type !== "INSERT") {
+serve(async (req: Request) => {
+  const payload = await req.json();
+
+  // Direct invocation from client (schedule / checklist notifications)
+  if (payload.direct) {
+    const { record_type, student_email, data } = payload as DirectPayload;
+    if (!record_type || !student_email || student_email === "shared") {
+      return new Response("ok", { status: 200 });
+    }
+    const built = buildEmail(record_type, data);
+    if (!built) return new Response("ok", { status: 200 });
+    const info = await transporter.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to: student_email,
+      subject: built.subject,
+      html: built.html,
+    });
+    console.log("Email sent (direct):", info.messageId);
+    return new Response(JSON.stringify({ ok: true, messageId: info.messageId }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Webhook payload (debrief / invoice INSERT events)
+  const webhookPayload = payload as WebhookPayload;
+  if (webhookPayload.type !== "INSERT") {
     return new Response("ok", { status: 200 });
   }
 
-  const { student_email, record_type, data } = payload.record;
-
-  // Only notify for debriefs and invoices
+  const { student_email, record_type, data } = webhookPayload.record;
   if (!["debrief", "invoice"].includes(record_type)) {
     return new Response("ok", { status: 200 });
   }
-
-  // Skip the shared-resource placeholder
   if (!student_email || student_email === "shared") {
     return new Response("ok", { status: 200 });
   }
 
-  const { subject, html } = buildEmail(record_type, data);
+  const built = buildEmail(record_type, data);
+  if (!built) return new Response("ok", { status: 200 });
 
   const info = await transporter.sendMail({
     from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
     to: student_email,
-    subject,
-    html,
+    subject: built.subject,
+    html: built.html,
   });
 
-  console.log("Email sent:", info.messageId);
-
+  console.log("Email sent (webhook):", info.messageId);
   return new Response(JSON.stringify({ ok: true, messageId: info.messageId }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
@@ -68,7 +93,7 @@ serve(async (req: Request) => {
 function buildEmail(
   type: string,
   data: Record<string, unknown>
-): { subject: string; html: string } {
+): { subject: string; html: string } | null {
   if (type === "debrief") {
     const date = data.date ? fmtDate(String(data.date)) : null;
     const lesson = data.lesson ? String(data.lesson) : null;
@@ -93,32 +118,73 @@ function buildEmail(
       subject: `New flight debrief${date ? ` — ${date}` : ""}`,
       html: layout(`
         <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">Flight Debrief Posted</h2>
-        <p style="margin:0 0 20px;color:#555">Your instructor has posted a new flight debrief. Log in to the app to view the full details.</p>
+        <p style="margin:0 0 20px;color:#555">Your instructor has posted a new flight debrief.</p>
         ${detailRows ? `<table style="border-collapse:collapse;margin-bottom:20px;font-size:14px">${detailRows}</table>` : ""}
         ${sections}
       `),
     };
   }
 
-  // invoice
-  const invNum = data.invNum ? `#${data.invNum}` : null;
-  const date = data.invDate ? fmtDate(String(data.invDate)) : null;
-  const total = data.total != null ? `$${Number(data.total).toFixed(2)}` : null;
+  if (type === "invoice") {
+    const invNum = data.invNum ? `#${data.invNum}` : null;
+    const date = data.invDate ? fmtDate(String(data.invDate)) : null;
+    const total = data.total != null ? `$${Number(data.total).toFixed(2)}` : null;
 
-  const detailRows = [
-    invNum && `<tr><td style="color:#888;padding:4px 0;width:120px">Invoice</td><td style="padding:4px 0">${invNum}</td></tr>`,
-    date && `<tr><td style="color:#888;padding:4px 0">Date</td><td style="padding:4px 0">${date}</td></tr>`,
-    total && `<tr><td style="color:#888;padding:4px 0;font-weight:600">Total</td><td style="padding:4px 0;font-weight:600">${total}</td></tr>`,
-  ].filter(Boolean).join("");
+    const detailRows = [
+      invNum && `<tr><td style="color:#888;padding:4px 0;width:120px">Invoice</td><td style="padding:4px 0">${invNum}</td></tr>`,
+      date && `<tr><td style="color:#888;padding:4px 0">Date</td><td style="padding:4px 0">${date}</td></tr>`,
+      total && `<tr><td style="color:#888;padding:4px 0;font-weight:600">Total</td><td style="padding:4px 0;font-weight:600">${total}</td></tr>`,
+    ].filter(Boolean).join("");
 
-  return {
-    subject: `New invoice from your instructor${invNum ? ` ${invNum}` : ""}`,
-    html: layout(`
-      <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">Invoice Posted</h2>
-      <p style="margin:0 0 20px;color:#555">Your instructor has posted a new invoice. Log in to the app to view and download it.</p>
-      ${detailRows ? `<table style="border-collapse:collapse;margin-bottom:20px;font-size:14px">${detailRows}</table>` : ""}
-    `),
-  };
+    return {
+      subject: `New invoice from your instructor${invNum ? ` ${invNum}` : ""}`,
+      html: layout(`
+        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">Invoice Posted</h2>
+        <p style="margin:0 0 20px;color:#555">Your instructor has posted a new invoice.</p>
+        ${detailRows ? `<table style="border-collapse:collapse;margin-bottom:20px;font-size:14px">${detailRows}</table>` : ""}
+      `),
+    };
+  }
+
+  if (type === "schedule") {
+    const date = data.date ? fmtDate(String(data.date)) : null;
+    const time = data.time ? fmt12(String(data.time)) : null;
+    const topic = data.topic ? String(data.topic) : "Lesson";
+    const aircraft = data.aircraft ? String(data.aircraft) : null;
+    const notes = data.notes ? String(data.notes) : null;
+    const lessonType = data.type === "ground" ? "Ground Lesson" : "Flight";
+
+    const detailRows = [
+      date && `<tr><td style="color:#888;padding:4px 0;width:120px">Date</td><td style="padding:4px 0">${date}</td></tr>`,
+      time && `<tr><td style="color:#888;padding:4px 0">Time</td><td style="padding:4px 0">${time}</td></tr>`,
+      `<tr><td style="color:#888;padding:4px 0">Type</td><td style="padding:4px 0">${lessonType}</td></tr>`,
+      aircraft && `<tr><td style="color:#888;padding:4px 0">Aircraft</td><td style="padding:4px 0">${aircraft}</td></tr>`,
+    ].filter(Boolean).join("");
+
+    return {
+      subject: `New lesson scheduled${date ? ` — ${date}` : ""}`,
+      html: layout(`
+        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">Lesson Scheduled: ${topic}</h2>
+        <p style="margin:0 0 20px;color:#555">Your instructor has scheduled a new lesson for you.</p>
+        ${detailRows ? `<table style="border-collapse:collapse;margin-bottom:20px;font-size:14px">${detailRows}</table>` : ""}
+        ${notes ? section("Notes from your instructor", notes, "#3b82f6") : ""}
+      `),
+    };
+  }
+
+  if (type === "checklist") {
+    const text = data.text ? String(data.text) : "New task";
+    return {
+      subject: "New task from your instructor",
+      html: layout(`
+        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">New Assignment</h2>
+        <p style="margin:0 0 20px;color:#555">Your instructor has added a new task for you to complete before your next lesson.</p>
+        ${section("Task", text, "#3b82f6")}
+      `),
+    };
+  }
+
+  return null;
 }
 
 function section(title: string, body: string, color: string): string {
@@ -142,7 +208,7 @@ function layout(body: string): string {
       ${body}
     </div>
     <div style="padding:16px 28px;border-top:1px solid #f0f0f0;font-size:12px;color:#aaa">
-      You're receiving this because your instructor added a record for you. Log in to the app to view it.
+      You're receiving this because your instructor added a record for you.
     </div>
   </div>
 </body>
@@ -153,4 +219,12 @@ function fmtDate(s: string): string {
   const d = new Date(s + (s.length === 10 ? "T12:00:00" : ""));
   if (isNaN(d.getTime())) return s;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function fmt12(t: string): string {
+  const [h, m] = t.split(":").map(Number);
+  if (isNaN(h)) return t;
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
