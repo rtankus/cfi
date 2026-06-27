@@ -3056,7 +3056,8 @@ async function dbDeletePDF(id) {
 
 async function dbSaveRes(id, name, buffer) {
   const path = `${_sbUser.id}/resources/${id}`;
-  await _sb.storage.from('pdfs').upload(path, buffer, { upsert: true, contentType: 'application/pdf' });
+  const { error } = await _sb.storage.from('pdfs').upload(path, buffer, { upsert: true, contentType: 'application/pdf' });
+  if (error) throw new Error('Upload failed: ' + error.message);
 }
 async function dbLoadRes(id) {
   const path = `${_sbUser.id}/resources/${id}`;
@@ -3431,8 +3432,8 @@ async function handleResourceUpload(input) {
     renderResourcesTab();
     showToast("Uploaded ✓");
   } catch (err) {
-    showToast("Error loading PDF");
-    console.error(err);
+    showToast(err.message || "Error processing PDF");
+    console.error('[resource upload]', err);
   }
 }
 
@@ -3467,7 +3468,7 @@ async function openResource(id) {
     let typed;
     if (meta?.signedUrl) {
       const resp = await fetch(meta.signedUrl);
-      if (!resp.ok) throw new Error('fetch failed');
+      if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
       typed = new Uint8Array(await resp.arrayBuffer());
     } else {
       const record = await dbLoadRes(id);
@@ -3478,8 +3479,8 @@ async function openResource(id) {
     resTotal    = resPdfDoc.numPages;
     await renderResPage(1);
   } catch (err) {
-    showToast("Error loading PDF");
-    console.error(err);
+    showToast(err.message || "Error loading PDF");
+    console.error('[openResource]', err);
   } finally {
     document.getElementById("resLoading").style.display = "none";
   }
