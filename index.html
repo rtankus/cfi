@@ -183,7 +183,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .debrief-dot.blue   { background: var(--blue); }
 .debrief-dot.amber  { background: var(--amber); }
 .debrief-section-header span { font-size: 13px; font-weight: 600; color: var(--text); }
-.debrief-section textarea { padding: 12px 14px; min-height: 100px; max-height: 220px; font-size: 14px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.debrief-section textarea { padding: 12px 14px; min-height: 100px; font-size: 14px; overflow: hidden; }
 
 /* ── HISTORY ── */
 .history-empty { text-align: center; padding: 50px 20px; color: var(--text3); font-size: 15px; }
@@ -253,7 +253,11 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .canvas-wrapper canvas { position: absolute; top: 0; left: 0; }
 #pdfCanvas { z-index: 1; }
 .page-indicator { position: absolute; bottom: 8px; right: 10px; z-index: 3; font-size: 11px; color: var(--text2); background: rgba(15,15,15,0.75); padding: 3px 9px; border-radius: 10px; pointer-events: none; }
-.syl-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 4; font-size: 13px; color: var(--text2); background: var(--surface2); }
+.syl-loading { display: flex; align-items: center; justify-content: center; padding: 40px; font-size: 13px; color: var(--text2); }
+#sylScrollContainer { display: flex; flex-direction: column; gap: 8px; padding-bottom: 20px; }
+.syl-page-wrap { width: 100%; background: #fff; border-radius: var(--radius); overflow: hidden; border: 0.5px solid var(--border); }
+.syl-page-wrap canvas { display: block; width: 100%; height: auto; }
+.syl-page-placeholder { width: 100%; aspect-ratio: 8.5 / 11; background: var(--surface2); display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; }
 .share-btn { background: var(--blue); color: #0a1a2e; border: none; border-radius: 20px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; flex-shrink: 0; }
 
 
@@ -306,7 +310,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-card-title { font-size: 15px; font-weight: 600; }
 .sv-card-body { padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
 .sv-section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text3); }
-.sv-section-text { font-size: 14px; color: var(--text); line-height: 1.55; }
+.sv-section-text { font-size: 14px; color: var(--text); line-height: 1.55; white-space: pre-wrap; }
 .sv-rating { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .sv-rating.tough { background: rgba(255,107,107,0.18); color: #ff6b6b; }
 .sv-rating.needs-review { background: rgba(247,200,126,0.18); color: var(--amber); }
@@ -500,7 +504,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   <p class="section-label">Notes</p>
   <div class="card"><div class="field-group">
     <div class="field-row stacked">
-      <textarea id="notes" placeholder="Notes for the client — fuel estimates, deferred charges, etc." style="max-height:180px;overflow-y:auto;-webkit-overflow-scrolling:touch"></textarea>
+      <textarea id="notes" placeholder="Notes for the client — fuel estimates, deferred charges, etc." style="overflow:hidden"></textarea>
     </div>
   </div></div>
 
@@ -550,7 +554,12 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
     <div class="field-row"><span class="field-label">XC</span><input type="number" id="dbXC" placeholder="0.0" step="0.1" /></div>
     <div class="field-row"><span class="field-label">Night</span><input type="number" id="dbNight" placeholder="0.0" step="0.1" /></div>
     <div class="field-row"><span class="field-label">Instrument</span><input type="number" id="dbInstrument" placeholder="0.0" step="0.1" /></div>
-    <div class="field-row"><span class="field-label">Lesson / stage</span><input type="text" id="dbLesson" placeholder="e.g. Stage 2 — soft field" /></div>
+    <div class="field-row"><span class="field-label">Lesson / stage</span>
+      <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0">
+        <select id="dbLessonSel" class="field-sel" onchange="onDbLessonChange()"><option value="">— none —</option></select>
+        <input type="text" id="dbLessonCustom" placeholder="Custom lesson name…" style="display:none;background:var(--surface2);border:0.5px solid var(--border2);border-radius:9px;padding:8px 12px;font-size:14px;color:var(--text);font-family:inherit;width:100%;box-sizing:border-box">
+      </div>
+    </div>
   </div></div>
 
   <p class="section-label">Overall session</p>
@@ -614,18 +623,8 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   </div>
 
   <div id="sylViewer" style="display:none">
-    <div class="lesson-nav" id="lessonNav"></div>
-    <div class="canvas-wrapper" id="canvasWrapper">
-      <div class="syl-loading" id="sylLoading">Loading…</div>
-      <canvas id="pdfCanvas"></canvas>
-      <div class="page-indicator" id="pageIndicator">1 / 1</div>
-    </div>
-    <div class="syl-nav-row">
-      <button class="res-nav-btn" id="sylPrevBtn" onclick="goToPage(sylPage-1)">‹</button>
-      <span class="res-page-ind" id="sylPageInd">1 / 1</span>
-      <button class="res-nav-btn" id="sylNextBtn" onclick="goToPage(sylPage+1)">›</button>
-      <button class="share-btn" style="margin-left:8px" onclick="shareCurrentPage()">Share</button>
-    </div>
+    <div class="syl-loading" id="sylLoading">Loading…</div>
+    <div id="sylScrollContainer"></div>
   </div>
 </div>
 
@@ -808,6 +807,7 @@ async function loadStudentView(email) {
 
 const RATING_CLASS = { 'Tough day':'tough', 'Needs review':'needs-review', 'Solid':'solid', 'Great flight!':'great' };
 function renderSvDebrief(db) {
+  db = cleanDebriefText(db);
   const ratingCls = RATING_CLASS[db.rating] || '';
   const ratingBadge = db.rating ? `<span class="sv-rating ${ratingCls}">${db.rating}</span>` : '';
   const sections = [
@@ -891,7 +891,8 @@ async function syncPastSessions(sid) {
 
 function _syncKV(key, value) {
   if (!_sbUser) return;
-  _sb.from('kv_store').upsert({ key, value, user_id: _sbUser.id, updated_at: new Date().toISOString() });
+  _sb.from('kv_store').upsert({ key, value, user_id: _sbUser.id, updated_at: new Date().toISOString() })
+    .then(({ error }) => { if (error) showToast('Sync error: ' + error.message); });
 }
 
 /* ══════════════════════════════════════
@@ -937,16 +938,19 @@ function getStuSyl(sid)     { try { return JSON.parse(localStorage.getItem(`stu_
 function saveStuSched(sid, data, email) {
   const v = JSON.stringify(data);
   localStorage.setItem(`stu_sched_${sid}`, v);
+  _syncKV(`stu_sched_${sid}`, v);
   if (_sbUser && email) _sb.from('student_records').upsert({ id:`sched_${sid}`, student_email: email.trim().toLowerCase(), record_type:'schedule', data, updated_at: new Date().toISOString() });
 }
 function saveStuCheck(sid, data, email) {
   const v = JSON.stringify(data);
   localStorage.setItem(`stu_check_${sid}`, v);
+  _syncKV(`stu_check_${sid}`, v);
   if (_sbUser && email) _sb.from('student_records').upsert({ id:`check_${sid}`, student_email: email.trim().toLowerCase(), record_type:'checklist', data, updated_at: new Date().toISOString() });
 }
 function saveStuSyl(sid, data, email) {
   const v = JSON.stringify(data);
   localStorage.setItem(`stu_syl_${sid}`, v);
+  _syncKV(`stu_syl_${sid}`, v);
   if (_sbUser && email) _sb.from('student_records').upsert({ id:`syl_${sid}`, student_email: email.trim().toLowerCase(), record_type:'syllabus', data, updated_at: new Date().toISOString() });
 }
 
@@ -1644,6 +1648,84 @@ function recalc() {
 /* ══════════════════════════════════════
    DEBRIEF
 ══════════════════════════════════════ */
+
+/* ── Lesson select helpers ── */
+function buildLessonSelect() {
+  const sel = document.getElementById('dbLessonSel');
+  if (!sel) return;
+  let html = '<option value="">— none —</option>';
+  PPL_SYLLABUS.forEach(stage => {
+    html += `<optgroup label="${stage.name}">`;
+    stage.flights.forEach(l => {
+      html += `<option value="${stage.key}:f:${l.n}">✈ Flight ${l.n}: ${l.t}</option>`;
+    });
+    stage.grounds.forEach(l => {
+      html += `<option value="${stage.key}:g:${l.n}">📖 Ground ${l.n}: ${l.t}</option>`;
+    });
+    html += '</optgroup>';
+  });
+  html += '<option value="custom">Custom…</option>';
+  sel.innerHTML = html;
+}
+
+function onDbLessonChange() {
+  const sel = document.getElementById('dbLessonSel');
+  const customInput = document.getElementById('dbLessonCustom');
+  const val = sel.value;
+  customInput.style.display = val === 'custom' ? '' : 'none';
+  if (val && val !== 'custom') {
+    const type = val.split(':')[1];
+    if (type === 'f') setSessionType('flt');
+    if (type === 'g') setSessionType('gnd');
+  }
+}
+
+function dbLessonText() {
+  const sel = document.getElementById('dbLessonSel');
+  const val = sel.value;
+  if (!val) return '';
+  if (val === 'custom') return document.getElementById('dbLessonCustom').value;
+  const opt = sel.options[sel.selectedIndex];
+  return opt ? opt.text.replace(/^[✈📖]\s*/, '') : '';
+}
+
+function dbLessonSylKey() {
+  const val = document.getElementById('dbLessonSel').value;
+  return (val && val !== 'custom') ? val : null;
+}
+
+function setDbLesson(sylKey, lessonText) {
+  const sel = document.getElementById('dbLessonSel');
+  const customInput = document.getElementById('dbLessonCustom');
+  if (sylKey && sel.querySelector(`option[value="${sylKey}"]`)) {
+    sel.value = sylKey;
+    customInput.style.display = 'none';
+  } else if (lessonText) {
+    sel.value = 'custom';
+    customInput.value = lessonText;
+    customInput.style.display = '';
+  } else {
+    sel.value = '';
+    customInput.value = '';
+    customInput.style.display = 'none';
+  }
+}
+
+function autoCheckSyllabus(db) {
+  if (!db.sylKey || !db.student) return;
+  const parts = db.sylKey.split(':');
+  if (parts.length !== 3) return;
+  const [stageKey, type, numStr] = parts;
+  const num = parseInt(numStr);
+  const stu = getStudents().find(s => s.name === db.student);
+  if (!stu) return;
+  const syl = getStuSyl(stu.id);
+  if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
+  if (!syl[stageKey][type]) syl[stageKey][type] = {};
+  if (syl[stageKey][type][num]) return;
+  syl[stageKey][type][num] = true;
+  saveStuSyl(stu.id, syl, stu.email);
+}
 function setRating(r) {
   dbRating = r;
   document.getElementById("ratingGood").className  = "rating-btn" + (r==="good" ?" selected-good":"");
@@ -1668,7 +1750,8 @@ function collectDebrief() {
     xc:          document.getElementById("dbXC").value,
     night:       document.getElementById("dbNight").value,
     instrument:  document.getElementById("dbInstrument").value,
-    lesson:      document.getElementById("dbLesson").value,
+    lesson:      dbLessonText(),
+    sylKey:      dbLessonSylKey(),
     sessionType: dbSessionType,
     rating:      dbRating,
     wentWell:    document.getElementById("dbWentWell").value,
@@ -1680,7 +1763,7 @@ function collectDebrief() {
 
 function saveDebrief() {
   const db = collectDebrief();
-  if (!db.student && !db.wentWell && !db.needsWork) { showToast("Add some content first"); return; }
+  if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime && !db.date) { showToast("Add some content first"); return; }
   const history = getHistory();
   if (editingDebriefId) {
     const idx = history.findIndex(r => r.id === editingDebriefId);
@@ -1695,9 +1778,11 @@ function saveDebrief() {
   }
   saveHistory(history);
   _pushStudentRecord(db);
+  autoCheckSyllabus(db);
 }
 
 function loadDebriefIntoForm(db) {
+  db = cleanDebriefText(db);
   editingDebriefId = db.id;
   document.getElementById("dbStudent").value  = db.student  || "";
   document.getElementById("dbAirport").value  = db.airport  || "";
@@ -1706,11 +1791,12 @@ function loadDebriefIntoForm(db) {
   document.getElementById("dbXC").value         = db.xc         || "";
   document.getElementById("dbNight").value      = db.night      || "";
   document.getElementById("dbInstrument").value = db.instrument || "";
-  document.getElementById("dbLesson").value     = db.lesson     || "";
+  setDbLesson(db.sylKey || null, db.lesson || "");
   document.getElementById("dbWentWell").value = db.wentWell || "";
   document.getElementById("dbNeedsWork").value= db.needsWork|| "";
   document.getElementById("dbNextTime").value = db.nextTime || "";
   document.getElementById("dbNotes").value    = db.notes    || "";
+  ["dbWentWell","dbNeedsWork","dbNextTime","dbNotes"].forEach(id => autoGrow(document.getElementById(id)));
   setRating(db.rating || "");
   setSessionType(db.sessionType || "");
   buildDateSelects("debriefDateSel", db.date);
@@ -1722,8 +1808,9 @@ function loadDebriefIntoForm(db) {
 
 function newDebrief() {
   editingDebriefId = null;
-  ["dbStudent","dbAirport","dbAircraft","dbHours","dbXC","dbNight","dbInstrument","dbLesson","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
+  ["dbStudent","dbAirport","dbAircraft","dbHours","dbXC","dbNight","dbInstrument","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
     .forEach(id => document.getElementById(id).value = "");
+  setDbLesson(null, "");
   setRating("");
   setSessionType("");
   buildDateSelects("debriefDateSel", todayStr());
@@ -1812,8 +1899,25 @@ function renderAttachments() {
 /* ══════════════════════════════════════
    HISTORY
 ══════════════════════════════════════ */
+const DEBRIEF_TEXT_FIELDS = ['wentWell','needsWork','nextTime','notes'];
+function cleanDebriefText(db) {
+  if (!db || db.type !== 'debrief') return db;
+  const out = { ...db };
+  for (const f of DEBRIEF_TEXT_FIELDS) {
+    if (typeof out[f] === 'string') {
+      out[f] = out[f].replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    }
+  }
+  return out;
+}
+
 function getHistory() { try { return JSON.parse(localStorage.getItem("raina_data")||"[]"); } catch(e) { return []; } }
-function saveHistory(arr) { const v=JSON.stringify(arr); try { localStorage.setItem("raina_data",v); } catch(e) { showToast("Storage full"); } _syncKV("raina_data",v); }
+function saveHistory(arr) {
+  const cleaned = arr.map(r => cleanDebriefText(r));
+  const v = JSON.stringify(cleaned);
+  try { localStorage.setItem("raina_data",v); } catch(e) { showToast("Storage full"); }
+  _syncKV("raina_data",v);
+}
 
 function setFilter(f) {
   historyFilter = f;
@@ -2217,7 +2321,7 @@ function showToast(msg) {
 ══════════════════════════════════════ */
 function saveAndShareDebrief() {
   const db = collectDebrief();
-  if (!db.student && !db.wentWell && !db.needsWork) { showToast("Add some content first"); return; }
+  if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime && !db.date) { showToast("Add some content first"); return; }
   const history = getHistory();
   if (editingDebriefId) {
     const idx = history.findIndex(r => r.id === editingDebriefId);
@@ -2235,6 +2339,7 @@ function saveAndShareDebrief() {
 }
 
 async function generateDebriefPDF(db, mode = 'share') {
+  db = cleanDebriefText(db);
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"pt", format:"letter" });
   const margin=44, pageW=612, colR=pageW-margin;
@@ -2539,9 +2644,7 @@ async function renderSyllabusTab() {
     document.getElementById("sylEmpty").style.display = "none";
     document.getElementById("sylViewer").style.display = "block";
     document.getElementById("sylTop").style.display = "flex";
-    renderLessonNav();
-    await renderSylPage(sylPage);
-    updateSylNavButtons();
+    await renderSylScrollable();
   }
 }
 
@@ -2572,9 +2675,7 @@ async function loadSyllabus(id) {
     const typed = new Uint8Array(record.data);
     sylPdfDoc = await window.pdfjsLib.getDocument({ data: typed }).promise;
     sylTotal  = sylPdfDoc.numPages;
-    renderLessonNav();
-    await renderSylPage(sylPage);
-    updateSylNavButtons();
+    await renderSylScrollable();
   } catch (err) {
     showToast("Error loading PDF");
     console.error(err);
@@ -2690,53 +2791,63 @@ async function confirmDeleteSyllabus() {
 }
 
 /* ── Lesson nav ── */
-function renderLessonNav() {
-  const meta = syllabusMeta.find(s => s.id === activeSylId);
-  if (!meta) return;
-  document.getElementById("lessonNav").innerHTML = meta.pageNames.map((name, i) =>
-    `<button class="lesson-btn${i + 1 === sylPage ? " active" : ""}" onclick="goToPage(${i + 1})">${name}</button>`
-  ).join("");
-  setTimeout(() => {
-    const active = document.querySelector(".lesson-btn.active");
-    if (active) active.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, 50);
+function renderLessonNav() {}
+function updateSylNavButtons() {}
+async function goToPage(n) {}
+async function renderSylPage(n) {}
+
+async function renderSylScrollable() {
+  const container = document.getElementById("sylScrollContainer");
+  if (!container || !sylPdfDoc) return;
+  container.innerHTML = "";
+  const total = sylPdfDoc.numPages;
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(async entry => {
+      if (!entry.isIntersecting) return;
+      const wrap = entry.target;
+      if (wrap.dataset.rendered) return;
+      wrap.dataset.rendered = "1";
+      obs.unobserve(wrap);
+      renderSylPageInto(wrap, parseInt(wrap.dataset.page));
+    });
+  }, { rootMargin: "400px" });
+
+  for (let i = 1; i <= total; i++) {
+    const wrap = document.createElement("div");
+    wrap.className = "syl-page-wrap";
+    wrap.dataset.page = i;
+    const ph = document.createElement("div");
+    ph.className = "syl-page-placeholder";
+    ph.textContent = `Page ${i}`;
+    wrap.appendChild(ph);
+    container.appendChild(wrap);
+    obs.observe(wrap);
+  }
 }
 
-async function goToPage(n) {
-  if (!sylPdfDoc || n < 1 || n > sylTotal) return;
-  sylPage = n;
-  document.getElementById("pageIndicator").textContent = `${n} / ${sylTotal}`;
-  updateSylNavButtons();
-  renderLessonNav();
-  await renderSylPage(n);
-  updateSylNavButtons();
-}
-
-async function renderSylPage(n) {
+async function renderSylPageInto(wrap, n) {
   if (!sylPdfDoc) return;
-  const page = await sylPdfDoc.getPage(n);
-  const wrapper  = document.getElementById("canvasWrapper");
-  const cssWidth = wrapper.clientWidth || 340;
-  const viewport = page.getViewport({ scale: 1 });
-  const scale    = cssWidth / viewport.width;
-  const vp       = page.getViewport({ scale });
-  const dpr      = window.devicePixelRatio || 1;
-
-  const pc = document.getElementById("pdfCanvas");
-  pc.width  = Math.round(vp.width * dpr);
-  pc.height = Math.round(vp.height * dpr);
-  pc.style.width  = vp.width + "px";
-  pc.style.height = vp.height + "px";
-  wrapper.style.height = vp.height + "px";
-
-  const ctx = pc.getContext("2d");
-  ctx.scale(dpr, dpr);
-  await page.render({ canvasContext: ctx, viewport: vp }).promise;
-  document.getElementById("pageIndicator").textContent = `${n} / ${sylTotal}`;
-  updateSylNavButtons();
+  try {
+    const page     = await sylPdfDoc.getPage(n);
+    const cssWidth = wrap.clientWidth || 340;
+    const vp0      = page.getViewport({ scale: 1 });
+    const vp       = page.getViewport({ scale: cssWidth / vp0.width });
+    const dpr      = window.devicePixelRatio || 1;
+    const canvas   = document.createElement("canvas");
+    canvas.width   = Math.round(vp.width * dpr);
+    canvas.height  = Math.round(vp.height * dpr);
+    canvas.style.width  = "100%";
+    canvas.style.height = "auto";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    wrap.innerHTML = "";
+    wrap.appendChild(canvas);
+  } catch (err) {
+    console.error("Page render error:", err);
+  }
 }
-
-
 
 /* ── Share / export current page ── */
 async function shareCurrentPage() {
@@ -2974,20 +3085,15 @@ async function deleteResource(id) {
 /* ══════════════════════════════════════
    INIT
 ══════════════════════════════════════ */
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
 function initScrollableTextareas() {
   document.querySelectorAll('.debrief-section textarea, #notes').forEach(el => {
-    let startY = 0;
-    el.addEventListener('touchstart', e => {
-      startY = e.touches[0].clientY;
-    }, { passive: true });
-    el.addEventListener('touchmove', e => {
-      const dy = startY - e.touches[0].clientY;
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      if (scrollHeight <= clientHeight) return;
-      const atBottom = scrollTop + clientHeight >= scrollHeight - 1 && dy > 0;
-      const atTop    = scrollTop <= 0 && dy < 0;
-      if (!atTop && !atBottom) e.preventDefault();
-    }, { passive: false });
+    el.addEventListener('input', () => autoGrow(el));
+    autoGrow(el);
   });
 }
 
@@ -3009,19 +3115,10 @@ function initApp() {
 
   // migrate corrupted \n literals back to real newlines in debrief text fields
   try {
-    const DEBRIEF_TEXT_FIELDS = ['wentWell','needsWork','nextTime','notes'];
     const history = JSON.parse(localStorage.getItem("raina_data") || "[]");
-    let dirty = false;
-    for (const rec of history) {
-      if (rec.type !== 'debrief') continue;
-      for (const f of DEBRIEF_TEXT_FIELDS) {
-        if (typeof rec[f] === 'string' && rec[f].includes('\\n')) {
-          rec[f] = rec[f].replace(/\\n/g, '\n');
-          dirty = true;
-        }
-      }
-    }
-    if (dirty) { const v = JSON.stringify(history); localStorage.setItem("raina_data", v); _syncKV("raina_data", v); }
+    const cleaned = history.map(r => cleanDebriefText(r));
+    const dirty = JSON.stringify(cleaned) !== JSON.stringify(history);
+    if (dirty) { saveHistory(cleaned); }
   } catch(e) {}
 
   initScrollableTextareas();
@@ -3029,6 +3126,7 @@ function initApp() {
   buildDateSelects("debriefDateSel", todayStr());
   renderFlights();
   renderLineItems();
+  buildLessonSelect();
   populateStudentSelects();
 }
 
