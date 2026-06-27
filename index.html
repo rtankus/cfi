@@ -1629,10 +1629,18 @@ async function svOpenResource(id, name, cfiUserId) {
   showToast('Loading…');
   try {
     await ensurePDFJS();
-    const path = `${cfiUserId}/resources/${id}`;
-    const { data, error } = await _sb.storage.from('pdfs').download(path);
-    if (error || !data) { showToast('Could not load PDF'); return; }
-    const buffer = await data.arrayBuffer();
+    const rec = (window._svRecords || []).find(r => r.record_type === 'resource' && String(r.data?.id) === String(id));
+    let buffer;
+    if (rec?.data?.signedUrl) {
+      const resp = await fetch(rec.data.signedUrl);
+      if (!resp.ok) throw new Error('fetch failed');
+      buffer = await resp.arrayBuffer();
+    } else {
+      const path = `${cfiUserId}/resources/${id}`;
+      const { data, error } = await _sb.storage.from('pdfs').download(path);
+      if (error || !data) { showToast('Could not load PDF'); return; }
+      buffer = await data.arrayBuffer();
+    }
     _svPdfDoc   = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
     _svPdfTotal = _svPdfDoc.numPages;
     _svPdfPage  = 1;
@@ -3374,7 +3382,20 @@ async function _pushSharedResources(arr) {
     await _sb.from('student_records').delete().eq('student_email','shared').eq('record_type','resource');
     return;
   }
-  const rows = arr.map(r => ({ id:`res_${r.id}`, student_email:'shared', record_type:'resource', data:{ ...r, cfi_user_id: _sbUser.id }, updated_at: new Date().toISOString() }));
+  // Generate signed URLs for any resource that is missing one
+  let metaChanged = false;
+  const enriched = await Promise.all(arr.map(async r => {
+    if (r.signedUrl) return r;
+    const { data: sd } = await _sb.storage.from('pdfs').createSignedUrl(`${_sbUser.id}/resources/${r.id}`, 315360000);
+    if (sd?.signedUrl) { metaChanged = true; return { ...r, signedUrl: sd.signedUrl }; }
+    return r;
+  }));
+  if (metaChanged) {
+    _cache["raina_resources"] = JSON.stringify(enriched);
+    _sb.from('kv_store').upsert({ key: "raina_resources", value: JSON.stringify(enriched), user_id: _sbUser.id, updated_at: new Date().toISOString() });
+    resMeta = enriched;
+  }
+  const rows = enriched.map(r => ({ id:`res_${r.id}`, student_email:'shared', record_type:'resource', data:{ ...r, cfi_user_id: _sbUser.id }, updated_at: new Date().toISOString() }));
   await _sb.from('student_records').upsert(rows);
   // delete any removed resources
   const { data: existing } = await _sb.from('student_records').select('id').eq('student_email','shared').eq('record_type','resource');
@@ -3401,8 +3422,11 @@ async function handleResourceUpload(input) {
     const id   = Date.now();
     const name = file.name.replace(/\.pdf$/i, "");
     await dbSaveRes(id, name, buffer);
+    const resPath = `${_sbUser.id}/resources/${id}`;
+    const { data: sd } = await _sb.storage.from('pdfs').createSignedUrl(resPath, 315360000);
+    const signedUrl = sd?.signedUrl || null;
     resMeta = getResMeta();
-    resMeta.push({ id, name, pageCount });
+    resMeta.push({ id, name, pageCount, signedUrl });
     saveResMeta(resMeta);
     renderResourcesTab();
     showToast("Uploaded ✓");
@@ -3440,9 +3464,16 @@ async function openResource(id) {
   document.getElementById("resLoading").style.display = "flex";
   try {
     await ensurePDFJS();
-    const record = await dbLoadRes(id);
-    if (!record) { showToast("PDF not found — please re-upload"); return; }
-    const typed = new Uint8Array(record.data);
+    let typed;
+    if (meta?.signedUrl) {
+      const resp = await fetch(meta.signedUrl);
+      if (!resp.ok) throw new Error('fetch failed');
+      typed = new Uint8Array(await resp.arrayBuffer());
+    } else {
+      const record = await dbLoadRes(id);
+      if (!record) { showToast("PDF not found — please re-upload"); return; }
+      typed = new Uint8Array(record.data);
+    }
     resPdfDoc   = await window.pdfjsLib.getDocument({ data: typed }).promise;
     resTotal    = resPdfDoc.numPages;
     await renderResPage(1);
