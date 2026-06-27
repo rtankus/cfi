@@ -3036,7 +3036,8 @@ function startDebriefForStudent(name) {
 ══════════════════════════════════════ */
 async function dbSavePDF(id, name, buffer) {
   const path = `${_sbUser.id}/pdfs/${id}`;
-  await _sb.storage.from('pdfs').upload(path, buffer, { upsert: true, contentType: 'application/pdf' });
+  const blob = new Blob([buffer], { type: 'application/pdf' });
+  await _sb.storage.from('pdfs').upload(path, blob, { upsert: true, contentType: 'application/pdf' });
 }
 async function dbLoadPDF(id) {
   if (id === BUILTIN_SYL_ID) {
@@ -3056,7 +3057,8 @@ async function dbDeletePDF(id) {
 
 async function dbSaveRes(id, name, buffer) {
   const path = `${_sbUser.id}/resources/${id}`;
-  const { error } = await _sb.storage.from('pdfs').upload(path, buffer, { upsert: true, contentType: 'application/pdf' });
+  const blob = new Blob([buffer], { type: 'application/pdf' });
+  const { error } = await _sb.storage.from('pdfs').upload(path, blob, { upsert: true, contentType: 'application/pdf' });
   if (error) throw new Error('Upload failed: ' + error.message);
 }
 async function dbLoadRes(id) {
