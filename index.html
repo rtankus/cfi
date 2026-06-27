@@ -884,6 +884,14 @@ async function loadStudentView(email) {
   document.getElementById('svThemeBtn').textContent = savedTheme === 'light' ? '☀️' : '🌙';
   screen.classList.add('active');
   await refreshStudentView(true);
+
+  // Live updates: refresh whenever CFI writes to this student's records
+  _sb.channel('sv-' + email)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'student_records', filter: `student_email=eq.${email}` },
+      () => refreshStudentView(false))
+    .subscribe();
+
+  // Fallback: refresh when the user switches back to this tab
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && window._svEmail) refreshStudentView(false);
   });
@@ -997,15 +1005,11 @@ async function syncPastSessions(sid) {
     rows.push({ id: `syl_${sid}`, student_email: email, record_type: 'syllabus', data: sylData, updated_at: new Date().toISOString() });
   }
 
-  // Also push schedule and checklist
+  // Also push schedule and checklist (always push to overwrite stale student data)
   const schedData = getStuSched(sid);
-  if (schedData.items.length) {
-    rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
-  }
+  rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
   const checkData = getStuCheck(sid);
-  if (checkData.items.length) {
-    rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
-  }
+  rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
 
   if (!rows.length) { showToast('Nothing to sync'); return; }
   showToast(`Syncing ${rows.length} records…`);
@@ -1045,13 +1049,9 @@ async function clearAndResync(sid) {
     rows.push({ id: `syl_${sid}`, student_email: email, record_type: 'syllabus', data: sylData, updated_at: new Date().toISOString() });
   }
   const schedData = getStuSched(sid);
-  if (schedData.items.length) {
-    rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
-  }
+  rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
   const checkData = getStuCheck(sid);
-  if (checkData.items.length) {
-    rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
-  }
+  rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
 
   if (!rows.length) { showToast('Cleared (nothing to re-upload)'); return; }
   showToast(`Re-uploading ${rows.length} records…`);
@@ -1190,10 +1190,10 @@ function updateSchedItem(sid, itemId, field, val) {
   if (item) item[field] = val;
   saveStuSched(sid, data, getStuEmail(sid));
 }
-function removeSchedItem(sid, itemId) {
+async function removeSchedItem(sid, itemId) {
   const data = getStuSched(sid);
   data.items = data.items.filter(i => i.id !== itemId);
-  saveStuSched(sid, data, getStuEmail(sid));
+  await saveStuSched(sid, data, getStuEmail(sid));
   renderStuSched(sid);
 }
 
@@ -1381,11 +1381,12 @@ function markInvoicePaid(id) {
   const history = getHistory();
   const rec = history.find(r => r.id === id);
   if (!rec) return;
-  rec.paid = true; rec.paidDate = new Date().toISOString();
+  rec.paid = !rec.paid;
+  if (rec.paid) rec.paidDate = new Date().toISOString(); else delete rec.paidDate;
   saveHistory(history);
   _pushStudentRecord(rec);
   renderHistory();
-  showToast('Marked paid ✓');
+  showToast(rec.paid ? 'Marked paid ✓' : 'Marked unpaid');
 }
 
 /* ══════════════════════════════════════
@@ -2319,7 +2320,7 @@ function renderHistory() {
           </div>
           <div class="history-item-right">
             <span class="history-item-amount">$${(inv.total||0).toFixed(2)}</span>
-            ${inv.paid ? '<span class="sv-pay-badge paid">Paid</span>' : `<button class="mark-paid-btn" onclick="event.stopPropagation();markInvoicePaid(${inv.id})">Mark Paid</button>`}
+            <button class="mark-paid-btn${inv.paid?' paid-active':''}" style="${inv.paid?'background:var(--accent-dim);border-color:rgba(200,240,160,0.3);color:var(--accent)':''}" onclick="event.stopPropagation();markInvoicePaid(${inv.id})">${inv.paid?'Paid ✓':'Mark Paid'}</button>
             ${badge}
             <button class="history-delete-btn" onclick="event.stopPropagation();generatePDF(JSON.parse(this.closest('[data-inv]').dataset.inv),'view')" title="View PDF">PDF</button>
             <button class="history-delete-btn" onclick="deleteRecord(event,${inv.id})">🗑</button>
@@ -2424,7 +2425,7 @@ function renderPayments() {
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <span style="font-size:16px;font-weight:700;color:${earned>0?"var(--accent)":"var(--text2)"}">$${earned.toFixed(2)}</span>
-          ${inv.paid ? '<span class="sv-pay-badge paid">Paid</span>' : `<button class="mark-paid-btn" onclick="markInvoicePaid(${inv.id});renderPayments()">Mark Paid</button>`}
+          <button class="mark-paid-btn" style="${inv.paid?'background:var(--accent-dim);border-color:rgba(200,240,160,0.3);color:var(--accent)':''}" onclick="markInvoicePaid(${inv.id});renderPayments()">${inv.paid?'Paid ✓':'Mark Paid'}</button>
         </div>
       </div>`;
     });
