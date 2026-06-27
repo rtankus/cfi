@@ -1141,12 +1141,21 @@ function stuTab(sid, tab, btn) {
   body.querySelectorAll('.stu-inner-section').forEach(s => s.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(`stu-${tab}-${sid}`).classList.add('active');
-  if (tab === 'schedule')  renderStuSched(sid);
-  if (tab === 'checklist') renderStuCheck(sid);
+  if (tab === 'schedule')  { renderStuSched(sid);  _pushStuData(sid, 'schedule'); }
+  if (tab === 'checklist') { renderStuCheck(sid);  _pushStuData(sid, 'checklist'); }
   if (tab === 'syllabus')  renderStuSyl(sid);
   if (tab === 'progress')  renderStuProgress(sid);
   if (tab === 'log')       renderStuLog(sid);
   if (tab === 'payments')  renderStuPayments(sid);
+}
+
+async function _pushStuData(sid, type) {
+  const email = getStuEmail(sid);
+  if (!_sbUser || !email) return;
+  const data = type === 'schedule' ? getStuSched(sid) : getStuCheck(sid);
+  const id   = type === 'schedule' ? `sched_${sid}` : `check_${sid}`;
+  const { error } = await _sb.from('student_records').upsert({ id, student_email: email.trim().toLowerCase(), record_type: type, data, updated_at: new Date().toISOString() });
+  if (error) console.error(`[_pushStuData ${type}]`, error);
 }
 
 /* ── Schedule ── */
