@@ -1808,8 +1808,12 @@ function renderCFIHome() {
         </div>
       </div>
       <div style="display:flex;gap:6px;margin-top:8px">
-        <button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>
-        <button onclick="cfiHomeInvoice('${esc(item.studentName||'')}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>
+        ${debriefBySchedId[item.id]
+          ? `<button onclick="openSchedDebrief(${debriefBySchedId[item.id]})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button>`
+          : `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${item.id}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>`}
+        ${invoiceBySchedId[item.id]
+          ? `<button onclick="openSchedInvoice(${invoiceBySchedId[item.id]})" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice ✓</button>`
+          : `<button onclick="cfiHomeInvoice('${esc(item.studentName||'')}','${item.id}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>`}
         <button onclick="openAddLesson('${esc(item.studentName||'')}')" style="padding:7px 10px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;color:var(--text2);font-family:inherit;cursor:pointer">+ Lesson</button>
       </div>
     </div>`;
@@ -2136,7 +2140,7 @@ function collectDebrief() {
 
 function saveDebrief() {
   const db = collectDebrief();
-  if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime && !db.date) { showToast("Add some content first"); return; }
+  if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime) { showToast("Add some content first"); return; }
   const history = getHistory();
   if (editingDebriefId) {
     const idx = history.findIndex(r => r.id === editingDebriefId);
@@ -2795,7 +2799,7 @@ function showToast(msg) {
 ══════════════════════════════════════ */
 function saveAndShareDebrief() {
   const db = collectDebrief();
-  if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime && !db.date) { showToast("Add some content first"); return; }
+  if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime) { showToast("Add some content first"); return; }
   const history = getHistory();
   if (editingDebriefId) {
     const idx = history.findIndex(r => r.id === editingDebriefId);
