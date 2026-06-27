@@ -438,6 +438,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <span>CFI</span>
     </div>
     <div class="tabs">
+      <button class="tab-btn"         onclick="showTab('home')">Home</button>
       <button class="tab-btn active"  onclick="showTab('invoice')">Invoice</button>
       <button class="tab-btn"         onclick="showTab('debrief')">Debrief</button>
       <button class="tab-btn menu-only" onclick="showTab('students')">Students</button>
@@ -458,6 +459,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <span>CFI Toolkit</span>
     </div>
     <div class="menu-items">
+      <button class="menu-item" onclick="menuNav('home')"><span class="menu-item-icon">🏠</span>Home</button>
       <button class="menu-item" onclick="menuNav('students')"><span class="menu-item-icon">👨‍🎓</span>Students</button>
       <button class="menu-item" onclick="menuNav('syllabus')"><span class="menu-item-icon">📚</span>Syllabus</button>
       <button class="menu-item" onclick="menuNav('resources')"><span class="menu-item-icon">📎</span>Resources</button>
@@ -467,6 +469,15 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
     <button class="menu-sync" style="margin-top:6px;background:var(--surface2);border-color:var(--border2);color:var(--text2)" onclick="location.reload(true)">Reload App</button>
     <button class="menu-sync" style="margin-top:6px;background:rgba(255,107,107,0.1);border-color:rgba(255,107,107,0.3);color:var(--danger)" onclick="doSignOut()">Sign Out</button>
   </div>
+</div>
+
+<!-- ══════════ HOME PAGE ══════════ -->
+<div class="page" id="page-home">
+  <div class="page-header">
+    <span class="page-title">My Schedule</span>
+    <button class="ghost-btn" onclick="renderCFIHome()">Refresh</button>
+  </div>
+  <div id="cfiHomeBody"></div>
 </div>
 
 <!-- ══════════ INVOICE PAGE ══════════ -->
@@ -1046,6 +1057,10 @@ function renderStuSched(sid) {
       <div class="sched-item-row">
         <input class="sched-field" style="max-width:110px" type="date" value="${item.date||''}" onchange="updateSchedItem(${sid},'${item.id}','date',this.value)">
         <input class="sched-field" style="max-width:76px" type="time" value="${item.time||''}" onchange="updateSchedItem(${sid},'${item.id}','time',this.value)">
+        <select class="sched-select" style="color:${(item.type||'flight')==='flight'?'var(--blue)':'var(--amber)'}" onchange="updateSchedItem(${sid},'${item.id}','type',this.value);this.style.color=this.value==='ground'?'var(--amber)':'var(--blue)'">
+          <option value="flight" ${(item.type||'flight')==='flight'?'selected':''}>✈ Flight</option>
+          <option value="ground" ${item.type==='ground'?'selected':''}>📚 Ground</option>
+        </select>
         <input class="sched-field" style="max-width:80px" placeholder="N-number" value="${item.aircraft||''}" onchange="updateSchedItem(${sid},'${item.id}','aircraft',this.value)">
         <select class="sched-select" onchange="updateSchedItem(${sid},'${item.id}','status',this.value)">
           <option ${item.status==='scheduled'?'selected':''}>scheduled</option>
@@ -1061,7 +1076,7 @@ function renderStuSched(sid) {
 }
 function addScheduleItem(sid) {
   const data = getStuSched(sid);
-  data.items.push({ id: String(Date.now()), date:'', time:'', aircraft:'', topic:'', notes:'', status:'scheduled' });
+  data.items.push({ id: String(Date.now()), date:'', time:'', type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled' });
   saveStuSched(sid, data, getStuEmail(sid));
   renderStuSched(sid);
 }
@@ -1282,9 +1297,10 @@ function renderSvHome(records, body) {
   const checkItems = (checkRec?.data?.items || []);
   const storedDone = JSON.parse(localStorage.getItem('sv_check_done') || '{}');
 
+  const nextLabel = nextFlight ? (nextFlight.type === 'ground' ? 'Next Ground Lesson' : 'Next Flight') : '';
   const nextHtml = nextFlight ? `
     <div class="sv-next-flight">
-      <div class="sv-next-label">Next Flight</div>
+      <div class="sv-next-label">${nextLabel}</div>
       <div class="sv-next-title">${esc(nextFlight.topic || 'Lesson')}</div>
       <div class="sv-next-meta">${nextFlight.date ? fmtDateStr(nextFlight.date) : ''}${nextFlight.time ? ' · ' + fmt12(nextFlight.time) : ''}${nextFlight.aircraft ? ' · ' + esc(nextFlight.aircraft) : ''}</div>
       ${nextFlight.notes ? `<div class="sv-next-notes">${esc(nextFlight.notes)}</div>` : ''}
@@ -1564,17 +1580,94 @@ function showTab(tab) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".menu-item").forEach(b => b.classList.remove("active"));
   document.getElementById("page-" + tab).classList.add("active");
-  const map = { invoice:"Invoice", debrief:"Debrief", students:"Students", syllabus:"Syllabus", resources:"Resources", history:"History" };
+  const map = { home:"Home", invoice:"Invoice", debrief:"Debrief", students:"Students", syllabus:"Syllabus", resources:"Resources", history:"History" };
   document.querySelectorAll(".tab-btn").forEach(b => {
     if (b.textContent.trim() === map[tab]) b.classList.add("active");
   });
   document.querySelectorAll(".menu-item").forEach(b => {
     if (b.textContent.trim() === map[tab]) b.classList.add("active");
   });
+  if (tab === "home")     renderCFIHome();
   if (tab === "history")  renderHistory();
   if (tab === "resources") renderResourcesTab();
   if (tab === "students") renderStudents();
   if (tab === "syllabus") renderSyllabusTab();
+}
+
+/* ══════════════════════════════════════
+   CFI HOME — combined schedule
+══════════════════════════════════════ */
+function renderCFIHome() {
+  const body = document.getElementById('cfiHomeBody');
+  if (!body) return;
+  const students = getStudents();
+  const today = new Date().toISOString().slice(0,10);
+
+  const allItems = [];
+  students.forEach(stu => {
+    const sched = getStuSched(stu.id);
+    (sched.items || []).forEach(item => {
+      if (item.status === 'scheduled' && item.date >= today) {
+        allItems.push({ ...item, studentName: stu.name });
+      }
+    });
+  });
+
+  allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
+
+  if (!allItems.length) {
+    body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.</div>';
+    return;
+  }
+
+  let html = '';
+  let lastDate = '';
+  allItems.forEach(item => {
+    if (item.date !== lastDate) {
+      if (lastDate) html += '</div>';
+      html += `<div class="section-label">${fmtDateStr(item.date)}</div><div class="card" style="margin-bottom:12px">`;
+      lastDate = item.date;
+    } else {
+      html += '<div style="height:0.5px;background:var(--border);margin:0 14px"></div>';
+    }
+    const isGround = item.type === 'ground';
+    const typeColor = isGround ? 'var(--amber)' : 'var(--blue)';
+    const typeLabel = isGround ? '📚 Ground' : '✈ Flight';
+    const itemJson = JSON.stringify(item).replace(/'/g,"\\'");
+    html += `<div style="padding:12px 14px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
+            <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.topic||'Lesson')}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text2)">${esc(item.studentName||'')}${item.time ? ' · '+fmt12(item.time) : ''}${item.aircraft ? ' · '+esc(item.aircraft) : ''}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>
+        <button onclick="cfiHomeInvoice('${esc(item.studentName||'')}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>
+      </div>
+    </div>`;
+  });
+  if (lastDate) html += '</div>';
+  body.innerHTML = html;
+}
+
+function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType) {
+  newDebrief();
+  const stuSel = document.getElementById('dbStudent');
+  if (stuSel) stuSel.value = studentName;
+  if (aircraft) document.getElementById('dbAircraft').value = aircraft;
+  if (date) buildDateSelects('debriefDateSel', date);
+  if (topic) setDbLesson(null, topic);
+  if (sessionType) setSessionType(sessionType);
+}
+
+function cfiHomeInvoice(studentName) {
+  newInvoice();
+  const clientSel = document.getElementById('clientName');
+  if (clientSel) clientSel.value = studentName;
 }
 
 function toggleMenu() {
