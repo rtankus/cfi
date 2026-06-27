@@ -183,7 +183,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .debrief-dot.blue   { background: var(--blue); }
 .debrief-dot.amber  { background: var(--amber); }
 .debrief-section-header span { font-size: 13px; font-weight: 600; color: var(--text); }
-.debrief-section textarea { padding: 12px 14px; min-height: 100px; font-size: 14px; overflow: hidden; }
+.debrief-section textarea { padding: 12px 14px; min-height: 100px; font-size: 14px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ── HISTORY ── */
 .history-empty { text-align: center; padding: 50px 20px; color: var(--text3); font-size: 15px; }
@@ -723,6 +723,7 @@ const _sb = supabase.createClient(
 );
 const CFI_EMAIL = 'tankusraina@gmail.com';
 let _sbUser = null;
+let _cache = {};
 let _loginMode = 'signin'; // 'signin' | 'signup'
 let _svTab = 'home';
 
@@ -785,9 +786,8 @@ async function bootApp() {
   }
 
   const { data } = await _sb.from('kv_store').select('key, value');
-  for (const row of (data || [])) {
-    try { localStorage.setItem(row.key, row.value); } catch(e) {}
-  }
+  _cache = {};
+  for (const row of (data || [])) { _cache[row.key] = row.value; }
   initApp();
 }
 
@@ -907,8 +907,55 @@ async function syncPastSessions(sid) {
   showToast(`Synced ✓`);
 }
 
+async function clearAndResync(sid) {
+  if (!_sbUser) { showToast('Not logged in'); return; }
+  const stu = getStudents().find(s => s.id === sid);
+  if (!stu || !stu.email) { showToast('Add student email first'); return; }
+  const email = stu.email.trim().toLowerCase();
+  if (!confirm(`Clear all cloud records for ${stu.name} and re-upload from local data? This removes stale entries the local data no longer has.`)) return;
+
+  showToast('Clearing old records…');
+  const { error: delErr } = await _sb.from('student_records').delete().eq('student_email', email);
+  if (delErr) { showToast('Clear failed: ' + delErr.message); return; }
+
+  // Re-build rows from local state
+  const history = getHistory();
+  const matching = history.filter(r =>
+    r.student === stu.name ||
+    r.client === stu.name ||
+    (stu.billingName && r.client === stu.billingName)
+  );
+  const rows = matching.map(r => ({
+    id: String(r.id),
+    student_email: email,
+    record_type: r.type || 'invoice',
+    data: r,
+    updated_at: new Date().toISOString()
+  }));
+
+  const sylData = getStuSyl(sid);
+  if (Object.keys(sylData).length) {
+    rows.push({ id: `syl_${sid}`, student_email: email, record_type: 'syllabus', data: sylData, updated_at: new Date().toISOString() });
+  }
+  const schedData = getStuSched(sid);
+  if (schedData.items.length) {
+    rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
+  }
+  const checkData = getStuCheck(sid);
+  if (checkData.items.length) {
+    rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
+  }
+
+  if (!rows.length) { showToast('Cleared (nothing to re-upload)'); return; }
+  showToast(`Re-uploading ${rows.length} records…`);
+  const { error } = await _sb.from('student_records').upsert(rows);
+  if (error) { showToast('Re-upload failed: ' + error.message); return; }
+  showToast(`Done — ${rows.length} records synced ✓`);
+}
+
 function _syncKV(key, value) {
   if (!_sbUser) return;
+  _cache[key] = value;
   _sb.from('kv_store').upsert({ key, value, user_id: _sbUser.id, updated_at: new Date().toISOString() })
     .then(({ error }) => { if (error) showToast('Sync error: ' + error.message); });
 }
@@ -949,25 +996,22 @@ const PPL_SYLLABUS = [
 /* ══════════════════════════════════════
    STUDENT EXTENDED DATA (schedule / checklist / syllabus)
 ══════════════════════════════════════ */
-function getStuSched(sid)   { try { return JSON.parse(localStorage.getItem(`stu_sched_${sid}`)||'{"items":[]}'); } catch { return {items:[]}; } }
-function getStuCheck(sid)   { try { return JSON.parse(localStorage.getItem(`stu_check_${sid}`)||'{"items":[]}'); } catch { return {items:[]}; } }
-function getStuSyl(sid)     { try { return JSON.parse(localStorage.getItem(`stu_syl_${sid}`)||'{}'); } catch { return {}; } }
+function getStuSched(sid)   { try { return JSON.parse(_cache[`stu_sched_${sid}`]||'{"items":[]}'); } catch { return {items:[]}; } }
+function getStuCheck(sid)   { try { return JSON.parse(_cache[`stu_check_${sid}`]||'{"items":[]}'); } catch { return {items:[]}; } }
+function getStuSyl(sid)     { try { return JSON.parse(_cache[`stu_syl_${sid}`]||'{}'); } catch { return {}; } }
 
 function saveStuSched(sid, data, email) {
   const v = JSON.stringify(data);
-  localStorage.setItem(`stu_sched_${sid}`, v);
   _syncKV(`stu_sched_${sid}`, v);
   if (_sbUser && email) _sb.from('student_records').upsert({ id:`sched_${sid}`, student_email: email.trim().toLowerCase(), record_type:'schedule', data, updated_at: new Date().toISOString() });
 }
 function saveStuCheck(sid, data, email) {
   const v = JSON.stringify(data);
-  localStorage.setItem(`stu_check_${sid}`, v);
   _syncKV(`stu_check_${sid}`, v);
   if (_sbUser && email) _sb.from('student_records').upsert({ id:`check_${sid}`, student_email: email.trim().toLowerCase(), record_type:'checklist', data, updated_at: new Date().toISOString() });
 }
 function saveStuSyl(sid, data, email) {
   const v = JSON.stringify(data);
-  localStorage.setItem(`stu_syl_${sid}`, v);
   _syncKV(`stu_syl_${sid}`, v);
   if (_sbUser && email) _sb.from('student_records').upsert({ id:`syl_${sid}`, student_email: email.trim().toLowerCase(), record_type:'syllabus', data, updated_at: new Date().toISOString() });
 }
@@ -1929,12 +1973,10 @@ function cleanDebriefText(db) {
   return out;
 }
 
-function getHistory() { try { return JSON.parse(localStorage.getItem("raina_data")||"[]"); } catch(e) { return []; } }
+function getHistory() { try { return JSON.parse(_cache["raina_data"]||"[]"); } catch(e) { return []; } }
 function saveHistory(arr) {
   const cleaned = arr.map(r => cleanDebriefText(r));
-  const v = JSON.stringify(cleaned);
-  try { localStorage.setItem("raina_data",v); } catch(e) { showToast("Storage full"); }
-  _syncKV("raina_data",v);
+  _syncKV("raina_data", JSON.stringify(cleaned));
 }
 
 function setFilter(f) {
@@ -2119,10 +2161,12 @@ async function forceSyncToCloud() {
   if (!_sbUser) { showToast("Not logged in"); return; }
   const keys = ["raina_data", "raina_students", "raina_syllabi", "raina_resources"];
   const rows = keys
-    .map(k => ({ key: k, value: localStorage.getItem(k) || "[]", user_id: _sbUser.id, updated_at: new Date().toISOString() }));
+    .filter(k => _cache[k])
+    .map(k => ({ key: k, value: _cache[k], user_id: _sbUser.id, updated_at: new Date().toISOString() }));
+  if (!rows.length) { showToast("Nothing to sync"); return; }
   const { error } = await _sb.from('kv_store').upsert(rows);
   if (error) { showToast("Sync failed: " + error.message); return; }
-  showToast("Synced to cloud ✓ — refresh on other devices");
+  showToast("Synced to cloud ✓");
 }
 
 /* ══════════════════════════════════════
@@ -2451,8 +2495,8 @@ async function generateDebriefPDF(db, mode = 'share') {
 const GOALS   = ["PPL","IFR","CPL","Sport","CFI","CFII","BFR","IPC","Other"];
 const MEDICALS= ["None","BasicMed","3rd Class","2nd Class","1st Class"];
 
-function getStudents() { try { return JSON.parse(localStorage.getItem("raina_students")||"[]"); } catch { return []; } }
-function saveStudents(arr) { const v=JSON.stringify(arr); localStorage.setItem("raina_students",v); _syncKV("raina_students",v); populateStudentSelects(); }
+function getStudents() { try { return JSON.parse(_cache["raina_students"]||"[]"); } catch { return []; } }
+function saveStudents(arr) { _syncKV("raina_students", JSON.stringify(arr)); populateStudentSelects(); }
 
 function renderStudents() {
   const students = getStudents();
@@ -2513,6 +2557,7 @@ function renderStudents() {
               <button class="ghost-btn" onclick="startInvoiceForStudent('${s.name.replace(/'/g,"\\'")}')">Invoice</button>
               <button class="ghost-btn" onclick="startDebriefForStudent('${s.name.replace(/'/g,"\\'")}')">New debrief</button>
               <button class="ghost-btn" onclick="syncPastSessions(${s.id})">Sync past sessions</button>
+              <button class="ghost-btn" onclick="clearAndResync(${s.id})">Clear &amp; re-sync</button>
               <button class="danger-btn" onclick="deleteStudent(${s.id})">Delete</button>
             </div>
           </div>
@@ -2632,9 +2677,9 @@ async function dbDeleteRes(id) {
   await _sb.storage.from('pdfs').remove([`${_sbUser.id}/resources/${id}`]);
 }
 
-/* ── Syllabus metadata (localStorage) ── */
-function getSylMeta()       { try { return JSON.parse(localStorage.getItem("raina_syllabi")||"[]"); } catch { return []; } }
-function saveSylMeta(arr)   { const v=JSON.stringify(arr); localStorage.setItem("raina_syllabi",v); _syncKV("raina_syllabi",v); }
+/* ── Syllabus metadata ── */
+function getSylMeta()       { try { return JSON.parse(_cache["raina_syllabi"]||"[]"); } catch { return []; } }
+function saveSylMeta(arr)   { _syncKV("raina_syllabi", JSON.stringify(arr)); }
 
 
 
@@ -2937,8 +2982,8 @@ async function seedBuiltinSyllabus() {
 /* ══════════════════════════════════════
    RESOURCES TAB
 ══════════════════════════════════════ */
-function getResMeta()       { try { return JSON.parse(localStorage.getItem("raina_resources")||"[]"); } catch { return []; } }
-function saveResMeta(arr)   { const v=JSON.stringify(arr); localStorage.setItem("raina_resources",v); _syncKV("raina_resources",v); _pushSharedResources(arr); }
+function getResMeta()       { try { return JSON.parse(_cache["raina_resources"]||"[]"); } catch { return []; } }
+function saveResMeta(arr)   { _syncKV("raina_resources", JSON.stringify(arr)); _pushSharedResources(arr); }
 
 async function _pushSharedResources(arr) {
   if (!_sbUser) return;
@@ -3116,16 +3161,17 @@ function initScrollableTextareas() {
 }
 
 function initApp() {
-  // migrate legacy storage key
+  // migrate legacy storage key (raina_invoices → raina_data)
   try {
-    const oldData = localStorage.getItem("raina_invoices");
+    const oldData = _cache["raina_invoices"] || localStorage.getItem("raina_invoices");
     if (oldData) {
       const oldRecords = JSON.parse(oldData);
       if (Array.isArray(oldRecords) && oldRecords.length) {
-        const existing = JSON.parse(localStorage.getItem("raina_data") || "[]");
+        const existing = getHistory();
         const existingIds = new Set(existing.map(r => r.id));
         const toAdd = oldRecords.map(r => ({ type: "invoice", ...r })).filter(r => !existingIds.has(r.id));
         if (toAdd.length) saveHistory([...existing, ...toAdd]);
+        delete _cache["raina_invoices"];
         localStorage.removeItem("raina_invoices");
       }
     }
@@ -3133,10 +3179,9 @@ function initApp() {
 
   // migrate corrupted \n literals back to real newlines in debrief text fields
   try {
-    const history = JSON.parse(localStorage.getItem("raina_data") || "[]");
+    const history = getHistory();
     const cleaned = history.map(r => cleanDebriefText(r));
-    const dirty = JSON.stringify(cleaned) !== JSON.stringify(history);
-    if (dirty) { saveHistory(cleaned); }
+    if (JSON.stringify(cleaned) !== JSON.stringify(history)) saveHistory(cleaned);
   } catch(e) {}
 
   initScrollableTextareas();
