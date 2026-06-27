@@ -3061,10 +3061,10 @@ function startDebriefForStudent(name) {
 /* ══════════════════════════════════════
    SYLLABUS — Supabase Storage
 ══════════════════════════════════════ */
-async function dbSavePDF(id, name, buffer) {
+async function dbSavePDF(id, name, file) {
   const path = `${_sbUser.id}/pdfs/${id}`;
-  const blob = new Blob([buffer], { type: 'application/pdf' });
-  await _sb.storage.from('pdfs').upload(path, blob, { upsert: true, contentType: 'application/pdf' });
+  const { error } = await _sb.storage.from('pdfs').upload(path, file, { upsert: true, contentType: 'application/pdf' });
+  if (error) throw new Error('Upload failed: ' + error.message);
 }
 async function dbLoadPDF(id) {
   if (id === BUILTIN_SYL_ID) {
@@ -3082,10 +3082,9 @@ async function dbDeletePDF(id) {
   await _sb.storage.from('pdfs').remove([`${_sbUser.id}/pdfs/${id}`]);
 }
 
-async function dbSaveRes(id, name, buffer) {
+async function dbSaveRes(id, name, file) {
   const path = `${_sbUser.id}/resources/${id}`;
-  const blob = new Blob([buffer], { type: 'application/pdf' });
-  const { error } = await _sb.storage.from('pdfs').upload(path, blob, { upsert: true, contentType: 'application/pdf' });
+  const { error } = await _sb.storage.from('pdfs').upload(path, file, { upsert: true, contentType: 'application/pdf' });
   if (error) throw new Error('Upload failed: ' + error.message);
 }
 async function dbLoadRes(id) {
@@ -3235,7 +3234,7 @@ async function handleSyllabusUpload(input) {
     const name = file.name.replace(/\.pdf$/i, "");
     showToast("Scanning lesson names…");
     const pageNames = await scanPageNames(tmpDoc);
-    await dbSavePDF(id, name, buffer);
+    await dbSavePDF(id, name, file);
     syllabusMeta = getSylMeta();
     syllabusMeta.push({ id, name, pageCount, pageNames });
     saveSylMeta(syllabusMeta);
@@ -3451,7 +3450,7 @@ async function handleResourceUpload(input) {
     const pageCount = tmpDoc.numPages;
     const id   = Date.now();
     const name = file.name.replace(/\.pdf$/i, "");
-    await dbSaveRes(id, name, buffer);
+    await dbSaveRes(id, name, file);
     const resPath = `${_sbUser.id}/resources/${id}`;
     const { data: sd } = await _sb.storage.from('pdfs').createSignedUrl(resPath, 315360000);
     const signedUrl = sd?.signedUrl || null;
