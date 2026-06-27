@@ -443,7 +443,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <button class="tab-btn menu-only" onclick="showTab('students')">Students</button>
       <button class="tab-btn menu-only" onclick="showTab('syllabus')">Syllabus</button>
       <button class="tab-btn menu-only" onclick="showTab('resources')">Resources</button>
-      <button class="tab-btn menu-only" onclick="showTab('history')">History</button>
+      <button class="tab-btn" onclick="showTab('history')">History</button>
     </div>
     <button onclick="doSignOut()" style="flex-shrink:0;padding:6px 12px;margin-bottom:10px;background:none;border:0.5px solid var(--border2);border-radius:20px;font-size:12px;color:var(--text3);cursor:pointer;font-family:inherit;white-space:nowrap">Sign out</button>
   </div>
@@ -869,24 +869,42 @@ async function syncPastSessions(sid) {
   if (!_sbUser) { showToast('Not logged in'); return; }
   const stu = getStudents().find(s => s.id === sid);
   if (!stu || !stu.email) { showToast('Add student email first'); return; }
+  const email = stu.email.trim().toLowerCase();
   const history = getHistory();
   const matching = history.filter(r =>
     r.student === stu.name ||
     r.client === stu.name ||
     (stu.billingName && r.client === stu.billingName)
   );
-  if (!matching.length) { showToast('No matching sessions found'); return; }
-  showToast(`Syncing ${matching.length} records…`);
   const rows = matching.map(r => ({
     id: String(r.id),
-    student_email: stu.email.trim().toLowerCase(),
+    student_email: email,
     record_type: r.type || 'invoice',
     data: r,
     updated_at: new Date().toISOString()
   }));
+
+  // Also push syllabus/progress data
+  const sylData = getStuSyl(sid);
+  if (Object.keys(sylData).length) {
+    rows.push({ id: `syl_${sid}`, student_email: email, record_type: 'syllabus', data: sylData, updated_at: new Date().toISOString() });
+  }
+
+  // Also push schedule and checklist
+  const schedData = getStuSched(sid);
+  if (schedData.items.length) {
+    rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
+  }
+  const checkData = getStuCheck(sid);
+  if (checkData.items.length) {
+    rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
+  }
+
+  if (!rows.length) { showToast('Nothing to sync'); return; }
+  showToast(`Syncing ${rows.length} records…`);
   const { error } = await _sb.from('student_records').upsert(rows);
   if (error) { showToast('Sync failed: ' + error.message); return; }
-  showToast(`Synced ${matching.length} records ✓`);
+  showToast(`Synced ✓`);
 }
 
 function _syncKV(key, value) {
