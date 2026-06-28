@@ -355,6 +355,9 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sched-notes { width: 100%; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--text); font-family: inherit; outline: none; resize: none; min-height: 48px; }
 .sched-notes::placeholder { color: var(--text3); }
 .sched-add-btn { width: 100%; padding: 11px; background: transparent; border: 0.5px dashed var(--border2); border-radius: var(--radius-sm); color: var(--text2); font-size: 13px; font-family: inherit; cursor: pointer; margin: 10px 14px 0; width: calc(100% - 28px); }
+.sched-item.pending { border-left: 2px solid var(--accent); background: var(--accent-dim); }
+.sched-confirm-btn { background: var(--accent); color: var(--accent-text); border: none; border-radius: 14px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.sched-confirm-btn:active { opacity: 0.8; }
 
 /* ── CHECKLIST ── */
 .check-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 0.5px solid var(--border); }
@@ -1202,7 +1205,7 @@ function renderStuSched(sid) {
   const el = document.getElementById(`stu-sched-list-${sid}`);
   if (!data.items.length) { el.innerHTML = '<div style="padding:12px 14px;font-size:13px;color:var(--text3)">No lessons scheduled yet.</div>'; return; }
   el.innerHTML = data.items.map(item => `
-    <div class="sched-item">
+    <div class="sched-item${item.pending?' pending':''}">
       <div class="sched-item-row">
         <input class="sched-field" style="max-width:110px" type="date" value="${item.date||''}" onchange="updateSchedItem(${sid},'${item.id}','date',this.value)">
         <input class="sched-field" style="max-width:76px" type="time" value="${item.time||''}" onchange="updateSchedItem(${sid},'${item.id}','time',this.value)">
@@ -1216,32 +1219,44 @@ function renderStuSched(sid) {
           <option ${item.status==='completed'?'selected':''}>completed</option>
           <option ${item.status==='cancelled'?'selected':''}>cancelled</option>
         </select>
+        ${item.pending?`<button class="sched-confirm-btn" onclick="confirmSchedItem(${sid},'${item.id}')">✓ Save</button>`:''}
         <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
       </div>
       <input class="sched-field" placeholder="Topic / lesson name" value="${esc(item.topic||'')}" onchange="updateSchedItem(${sid},'${item.id}','topic',this.value)" style="width:100%">
       <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
-      <button class="ghost-btn" style="font-size:12px;padding:5px 12px;margin-top:2px" onclick="exportToCalendar(${JSON.stringify(item).replace(/"/g,'&quot;')})">+ Calendar</button>
+      ${item.pending?'':`<button class="ghost-btn" style="font-size:12px;padding:5px 12px;margin-top:2px" onclick="exportToCalendar(${JSON.stringify(item).replace(/"/g,'&quot;')})">+ Calendar</button>`}
     </div>`).join('');
 }
-async function addScheduleItem(sid) {
-  const email = getStuEmail(sid);
-  const newItem = { id: String(Date.now()), date:'', time:'', type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled' };
+function addScheduleItem(sid) {
+  const newItem = { id: String(Date.now()), date:'', time:'', type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled', pending: true };
   const data = getStuSched(sid);
   data.items.push(newItem);
-  await saveStuSched(sid, data, email);
+  _cache[`stu_sched_${sid}`] = JSON.stringify(data);
   renderStuSched(sid);
+}
+function confirmSchedItem(sid, itemId) {
+  const data = getStuSched(sid);
+  const item = data.items.find(i => i.id === itemId);
+  if (!item) return;
+  delete item.pending;
+  _cache[`stu_sched_${sid}`] = JSON.stringify(data);
+  renderStuSched(sid);
+  saveStuSched(sid, data, getStuEmail(sid));
 }
 function updateSchedItem(sid, itemId, field, val) {
   const data = getStuSched(sid);
   const item = data.items.find(i => i.id === itemId);
-  if (item) item[field] = val;
-  saveStuSched(sid, data, getStuEmail(sid));
+  if (!item) return;
+  item[field] = val;
+  _cache[`stu_sched_${sid}`] = JSON.stringify(data);
+  if (!item.pending) saveStuSched(sid, data, getStuEmail(sid));
 }
-async function removeSchedItem(sid, itemId) {
+function removeSchedItem(sid, itemId) {
   const data = getStuSched(sid);
   data.items = data.items.filter(i => i.id !== itemId);
-  await saveStuSched(sid, data, getStuEmail(sid));
+  _cache[`stu_sched_${sid}`] = JSON.stringify(data);
   renderStuSched(sid);
+  saveStuSched(sid, data, getStuEmail(sid));
 }
 
 /* ── Checklist ── */
