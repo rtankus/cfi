@@ -926,6 +926,12 @@ async function loadStudentView(email) {
   screen.classList.toggle('light', savedTheme === 'light');
   document.getElementById('svThemeBtn').textContent = savedTheme === 'light' ? '☀️' : '🌙';
   screen.classList.add('active');
+  const svHash = location.hash.replace('#', '');
+  const svValidTabs = new Set(['home','progress','log','payments','resources']);
+  if (svHash.startsWith('sv-')) {
+    const t = svHash.slice(3);
+    if (svValidTabs.has(t)) _svTab = t;
+  }
   await refreshStudentView(true);
 
   // Live updates: refresh whenever CFI writes to this student's records
@@ -1580,6 +1586,7 @@ function markInvoicePaid(id) {
 ══════════════════════════════════════ */
 function svShowTab(tab) {
   _svTab = tab;
+  location.hash = 'sv-' + tab;
   ['home','progress','log','payments','resources'].forEach(t => {
     const el = document.getElementById(`svTab${t.charAt(0).toUpperCase()+t.slice(1)}`);
     if (el) el.classList.toggle('active', t === tab);
@@ -2507,13 +2514,36 @@ function autoCheckSyllabus(db) {
   const syl = getStuSyl(stu.id);
   if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
   if (!syl[stageKey][type]) syl[stageKey][type] = {};
-  if (syl[stageKey][type][num]) return;
   syl[stageKey][type][num] = true;
   saveStuSyl(stu.id, syl, stu.email);
 }
 
 function syncAllDebriefSyllabus() {
-  getHistory().filter(r => r.type === 'debrief').forEach(db => autoCheckSyllabus(db));
+  const students = getStudents();
+  const byStu = {};
+  getHistory().filter(r => r.type === 'debrief').forEach(db => {
+    const sylKey = db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType);
+    if (!sylKey || !db.student) return;
+    const parts = sylKey.split(':');
+    if (parts.length !== 3) return;
+    const stu = students.find(s => s.name === db.student);
+    if (!stu) return;
+    if (!byStu[stu.id]) byStu[stu.id] = { stu, sylKeys: new Set() };
+    byStu[stu.id].sylKeys.add(sylKey);
+  });
+  Object.values(byStu).forEach(({ stu, sylKeys }) => {
+    const syl = getStuSyl(stu.id);
+    let changed = false;
+    sylKeys.forEach(sylKey => {
+      const [stageKey, type, numStr] = sylKey.split(':');
+      const num = parseInt(numStr);
+      if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
+      if (!syl[stageKey][type]) syl[stageKey][type] = {};
+      if (!syl[stageKey][type][num]) { syl[stageKey][type][num] = true; changed = true; }
+    });
+    // Always push so Supabase student_records stays in sync with local cache
+    saveStuSyl(stu.id, syl, stu.email);
+  });
 }
 function setRating(r) {
   dbRating = r;
@@ -4118,6 +4148,11 @@ function initApp() {
   const validTabs = new Set(['home','invoice','debrief','students','syllabus','resources','history','payments']);
   const hash = location.hash.replace('#', '');
   showTab(validTabs.has(hash) ? hash : 'home');
+  window.addEventListener('hashchange', () => {
+    const h = location.hash.replace('#', '');
+    if (h.startsWith('sv-')) return;
+    if (validTabs.has(h)) showTab(h);
+  });
 }
 
 function populateStudentSelects() {
