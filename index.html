@@ -954,6 +954,7 @@ async function notifyStudent(email, recordType, data) {
   try {
     const { error } = await _sb.functions.invoke('notify-student', { body: { direct: true, record_type: recordType, student_email: email.trim().toLowerCase(), data } });
     if (error) { console.error('[notify] function error:', error); showToast('Email not sent: ' + (error.message || error)); }
+    else { showToast('Email sent ✓'); }
   } catch(e) { console.error('[notify] exception:', e); showToast('Email notification failed'); }
 }
 
@@ -1552,6 +1553,11 @@ function markInvoicePaid(id) {
   _pushStudentRecord(rec);
   renderHistory();
   showToast(rec.paid ? 'Marked paid ✓' : 'Marked unpaid');
+  if (rec.paid) {
+    const clientName = rec.client || rec.student || '';
+    const stu = getStudents().find(s => s.name === clientName || (s.billingName && s.billingName === clientName));
+    if (stu?.email) notifyStudent(stu.email, 'paid', rec);
+  }
 }
 
 /* ══════════════════════════════════════
@@ -2350,6 +2356,7 @@ function saveDebrief() {
   const db = collectDebrief();
   if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime) { showToast("Add some content first"); return; }
   const history = getHistory();
+  const isNew = !editingDebriefId;
   if (editingDebriefId) {
     const idx = history.findIndex(r => r.id === editingDebriefId);
     if (idx !== -1) history[idx] = db; else history.push(db);
@@ -2363,6 +2370,10 @@ function saveDebrief() {
   }
   saveHistory(history);
   _pushStudentRecord(db);
+  if (isNew && db.student) {
+    const stu = getStudents().find(s => s.name === db.student);
+    if (stu?.email) notifyStudent(stu.email, 'debrief', db);
+  }
   autoCheckSyllabus(db);
 }
 
@@ -2821,6 +2832,10 @@ function saveAndGeneratePDF(share = false) {
   saveHistory(history);
   _pushStudentRecord(inv);
   showToast("Saved ✓  Generating PDF…");
+  if (inv.client) {
+    const stu = getStudents().find(s => s.name === inv.client || (s.billingName && s.billingName === inv.client));
+    if (stu?.email) notifyStudent(stu.email, 'invoice', inv);
+  }
   setTimeout(() => generatePDF(inv, share), 300);
 }
 

@@ -59,35 +59,8 @@ serve(async (req: Request) => {
     });
   }
 
-  // Webhook payload (debrief / invoice INSERT events)
-  const webhookPayload = payload as WebhookPayload;
-  if (webhookPayload.type !== "INSERT") {
-    return new Response("ok", { status: 200 });
-  }
-
-  const { student_email, record_type, data } = webhookPayload.record;
-  if (!["debrief", "invoice"].includes(record_type)) {
-    return new Response("ok", { status: 200 });
-  }
-  if (!student_email || student_email === "shared") {
-    return new Response("ok", { status: 200 });
-  }
-
-  const built = buildEmail(record_type, data);
-  if (!built) return new Response("ok", { status: 200 });
-
-  const info = await transporter.sendMail({
-    from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-    to: student_email,
-    subject: built.subject,
-    html: built.html,
-  });
-
-  console.log("Email sent (webhook):", info.messageId);
-  return new Response(JSON.stringify({ ok: true, messageId: info.messageId }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  // Webhook path — emails are now sent via direct client invocation above; skip here.
+  return new Response("ok", { status: 200 });
 });
 
 function buildEmail(
@@ -168,6 +141,27 @@ function buildEmail(
         <p style="margin:0 0 20px;color:#555">Your instructor has scheduled a new lesson for you.</p>
         ${detailRows ? `<table style="border-collapse:collapse;margin-bottom:20px;font-size:14px">${detailRows}</table>` : ""}
         ${notes ? section("Notes from your instructor", notes, "#3b82f6") : ""}
+      `),
+    };
+  }
+
+  if (type === "paid") {
+    const invNum = data.invNum ? `#${data.invNum}` : null;
+    const date = data.invDate ? fmtDate(String(data.invDate)) : null;
+    const total = data.total != null ? `$${Number(data.total).toFixed(2)}` : null;
+
+    const detailRows = [
+      invNum && `<tr><td style="color:#888;padding:4px 0;width:120px">Invoice</td><td style="padding:4px 0">${invNum}</td></tr>`,
+      date && `<tr><td style="color:#888;padding:4px 0">Date</td><td style="padding:4px 0">${date}</td></tr>`,
+      total && `<tr><td style="color:#888;padding:4px 0;font-weight:600">Amount</td><td style="padding:4px 0;font-weight:600">${total}</td></tr>`,
+    ].filter(Boolean).join("");
+
+    return {
+      subject: `Payment received — invoice${invNum ? ` ${invNum}` : ""} marked paid`,
+      html: layout(`
+        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">Payment Received</h2>
+        <p style="margin:0 0 20px;color:#555">Your instructor has marked your invoice as paid. Thank you!</p>
+        ${detailRows ? `<table style="border-collapse:collapse;margin-bottom:20px;font-size:14px">${detailRows}</table>` : ""}
       `),
     };
   }
