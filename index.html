@@ -1196,7 +1196,6 @@ function stuTab(sid, tab, btn) {
   if (tab === 'schedule')  { renderStuSched(sid);  _pushStuData(sid, 'schedule'); }
   if (tab === 'checklist') { _pullAndRenderStuCheck(sid); }
   if (tab === 'syllabus')  renderStuSyl(sid);
-  if (tab === 'progress')  renderStuProgress(sid);
   if (tab === 'log')       renderStuLog(sid);
   if (tab === 'payments')  renderStuPayments(sid);
 }
@@ -1731,7 +1730,7 @@ function renderSvHome(records, body) {
       <div class="sv-next-meta">${nextFlight.date ? fmtDateStr(nextFlight.date) : ''}${nextFlight.time ? ' · ' + fmt12(nextFlight.time) : ''}${nextFlight.aircraft ? ' · ' + esc(nextFlight.aircraft) : ''}</div>
       ${nextFlight.notes ? `<div class="sv-next-notes">${esc(nextFlight.notes)}</div>` : ''}
       <button onclick="event.stopPropagation();exportToCalendar(window._svUpcoming[0])" style="margin-top:10px;background:rgba(126,184,247,0.2);border:0.5px solid rgba(126,184,247,0.4);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Add to Calendar</button>
-      ${prepTasks.length ? `<div style="margin-top:14px;border-top:0.5px solid rgba(126,184,247,0.2);padding-top:12px"><div style="font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Prep for this lesson</div>${prepTasks.map((task, idx) => { const key = nextFlight.id+'_p'+idx; const done = !!_svDoneMap[key]; return `<div class="sv-check-item ${done?'done':''}" id="svpi-${key}"><input type="checkbox" ${done?'checked':''} onchange="svTogglePrepTask('${nextFlight.id}',${idx},this.checked)"><label onclick="svTogglePrepTask('${nextFlight.id}',${idx},!document.querySelector('#svpi-${key} input').checked)">${esc(task)}</label></div>`; }).join('')}</div>` : ''}
+      ${prepTasks.length ? `<div style="margin-top:14px;border-top:0.5px solid rgba(126,184,247,0.2);padding-top:12px"><div style="font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Prep for this lesson</div>${prepTasks.map((task, idx) => { const key = nextFlight.id+'_p'+idx; const done = !!_svDoneMap[key]; return `<div class="sv-check-item ${done?'done':''}" id="svpi-${key}" onclick="event.stopPropagation()"><input type="checkbox" ${done?'checked':''} onchange="svTogglePrepTask('${nextFlight.id}',${idx},this.checked)"><label onclick="event.stopPropagation();svTogglePrepTask('${nextFlight.id}',${idx},!document.querySelector('#svpi-${key} input').checked)">${esc(task)}</label></div>`; }).join('')}</div>` : ''}
     </div>` : '';
 
   const checkHtml = generalTasks.length ? `
@@ -1849,7 +1848,6 @@ function closeFlightDetail() {
 }
 
 function renderSvProgress(records, body) {
-  // Start with CFI-managed syllabus overrides, then layer in debrief-derived completions
   const sylRec = records.find(r => r.record_type === 'syllabus');
   const syl = JSON.parse(JSON.stringify(sylRec?.data || {}));
   records.filter(r => r.record_type === 'debrief').forEach(r => {
@@ -1869,13 +1867,29 @@ function renderSvProgress(records, body) {
     const total = stage.flights.length + stage.grounds.length;
     const done  = stage.flights.filter(l => st.f && st.f[l.n]).length + stage.grounds.filter(l => st.g && st.g[l.n]).length;
     const pct   = total ? Math.round(done/total*100) : 0;
-    const fDone = stage.flights.filter(l => st.f && st.f[l.n]).length;
-    const gDone = stage.grounds.filter(l => st.g && st.g[l.n]).length;
-    return `<div class="sv-stage">
-      <div class="sv-stage-header">
-        <div class="sv-stage-name">${stage.name}</div>
-        <div class="sv-progress-bar-wrap"><div class="sv-progress-bar" style="width:${pct}%"></div></div>
-        <div class="sv-progress-label">${fDone}/${stage.flights.length} flights · ${gDone}/${stage.grounds.length} grounds</div>
+    const flightRows = stage.flights.map(l => {
+      const checked = !!(st.f && st.f[l.n]);
+      return `<div class="syl-check-row ${checked ? 'done' : ''}" style="pointer-events:none">
+        <input type="checkbox" ${checked ? 'checked' : ''} disabled>
+        <label style="color:${checked ? 'var(--accent)' : 'var(--text2)'}">Flight ${l.n}: ${l.t}</label>
+      </div>`;
+    }).join('');
+    const groundRows = stage.grounds.map(l => {
+      const checked = !!(st.g && st.g[l.n]);
+      return `<div class="syl-check-row ${checked ? 'done' : ''}" style="pointer-events:none">
+        <input type="checkbox" ${checked ? 'checked' : ''} disabled>
+        <label style="color:${checked ? 'var(--accent)' : 'var(--text2)'}">Ground ${l.n}: ${l.t}</label>
+      </div>`;
+    }).join('');
+    return `<div class="syl-stage">
+      <div class="syl-stage-header" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span class="syl-stage-name">${stage.name}</span>
+        <div class="syl-stage-bar-wrap"><div class="syl-stage-bar" style="width:${pct}%"></div></div>
+        <span class="syl-stage-pct">${pct}%</span>
+      </div>
+      <div class="syl-stage-items">
+        <div class="syl-section-label">Flight Lessons</div>${flightRows}
+        <div class="syl-section-label">Ground Lessons</div>${groundRows}
       </div>
     </div>`;
   }).join('');
@@ -2200,7 +2214,7 @@ function renderCFIHome() {
           : `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${item.id}','${esc(item.sylKey||'')}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>`}
         ${invoiceBySchedId[item.id]
           ? `<button onclick="openSchedInvoice(${invoiceBySchedId[item.id]})" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice ✓</button>`
-          : `<button onclick="cfiHomeInvoice('${esc(item.studentName||'')}','${item.id}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>`}
+          : `<button onclick="cfiHomeInvoice('${esc(item.studentName||'')}','${item.id}','${item.date||''}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>`}
         <button onclick="openAddLesson('${esc(item.studentName||'')}')" style="padding:7px 10px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;color:var(--text2);font-family:inherit;cursor:pointer">+ Lesson</button>
       </div>
     </div>`;
@@ -2293,8 +2307,8 @@ function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType, itemId,
   if (sessionType) setSessionType(sessionType);
 }
 
-function cfiHomeInvoice(studentName, itemId) {
-  newInvoice();
+function cfiHomeInvoice(studentName, itemId, date) {
+  newInvoice(date || null);
   _pendingSchedItemId = itemId || null;
   const clientSel = document.getElementById('clientName');
   if (clientSel) clientSel.value = studentName;
@@ -3002,14 +3016,20 @@ function loadInvoiceIntoForm(inv) {
   showToast("Invoice loaded");
 }
 
-function newInvoice() {
+function dateToInvoicePrefix(dateStr) {
+  const d = new Date((dateStr || todayStr()) + "T12:00:00");
+  return `${pad(d.getMonth()+1)}${pad(d.getDate())}${String(d.getFullYear()).slice(-2)}-`;
+}
+
+function newInvoice(prefillDate) {
+  const dateStr = prefillDate || todayStr();
   _pendingSchedItemId = null;
   document.getElementById("clientName").value="";
-  document.getElementById("invoiceNum").value="";
+  document.getElementById("invoiceNum").value=dateToInvoicePrefix(dateStr);
   document.getElementById("notes").value="";
   document.getElementById("taxLabel").value="Tax / Fees (if applicable)";
   document.getElementById("taxAmount").value="0";
-  flights=[{date:"",airport:"",hobbsIn:"",hobbsOut:""}];
+  flights=[{date:dateStr,airport:"",hobbsIn:"",hobbsOut:""}];
   lineItems=[
     {name:"Flight Instruction",rate:40,qty:0,unit:"hr"},
     {name:"Ground Instruction",rate:40,qty:0,unit:"hr"},
@@ -3017,7 +3037,7 @@ function newInvoice() {
     {name:"Fuel Charges",rate:6.55,qty:0,unit:"gal"},
   ];
   attachments=[];
-  buildDateSelects("invoiceDateSel", todayStr());
+  buildDateSelects("invoiceDateSel", dateStr);
   renderFlights(); renderLineItems(); renderAttachments(); recalc();
   showTab("invoice");
 }
@@ -3452,7 +3472,6 @@ function renderStudents() {
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'schedule',this)">Schedule</button>
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'checklist',this)">Checklist</button>
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'syllabus',this)">Syllabus</button>
-            <button class="stu-inner-tab"        onclick="stuTab(${s.id},'progress',this)">Progress</button>
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'log',this)">Log</button>
             <button class="stu-inner-tab"        onclick="stuTab(${s.id},'payments',this)">Payments</button>
           </div>
@@ -3498,9 +3517,6 @@ function renderStudents() {
           </div>
           <div class="stu-inner-section" id="stu-syllabus-${s.id}">
             <div id="stu-syl-list-${s.id}"></div>
-          </div>
-          <div class="stu-inner-section" id="stu-progress-${s.id}">
-            <div id="stu-progress-content-${s.id}" style="padding:8px 0"></div>
           </div>
           <div class="stu-inner-section" id="stu-log-${s.id}">
             <div id="stu-log-content-${s.id}"></div>
