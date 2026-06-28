@@ -272,6 +272,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .res-card-del { background: none; border: none; font-size: 18px; color: var(--text3); cursor: pointer; padding: 4px; flex-shrink: 0; font-family: inherit; }
 .res-card-del:active { color: var(--danger); }
 .res-viewer-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+#resScrollContainer { display: flex; flex-direction: column; gap: 8px; padding-bottom: 20px; }
 .res-back-btn { background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 20px; padding: 7px 14px; font-size: 13px; font-weight: 500; color: var(--text2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
 .res-viewer-title { flex: 1; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .res-nav-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -692,15 +693,8 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <span class="res-viewer-title" id="resViewerTitle"></span>
       <button class="share-btn" onclick="shareResPage()">Share</button>
     </div>
-    <div class="res-nav-row">
-      <button class="res-nav-btn" id="resPrevBtn" onclick="goToResPage(resPage-1)">‹</button>
-      <span class="res-page-ind" id="resPageInd">1 / 1</span>
-      <button class="res-nav-btn" id="resNextBtn" onclick="goToResPage(resPage+1)">›</button>
-    </div>
-    <div class="canvas-wrapper" id="resCanvasWrapper">
-      <div class="syl-loading" id="resLoading">Loading…</div>
-      <canvas id="resPdfCanvas"></canvas>
-    </div>
+    <div class="syl-loading" id="resLoading">Loading…</div>
+    <div id="resScrollContainer"></div>
   </div>
 </div>
 
@@ -1444,6 +1438,14 @@ function renderStudentView() {
   if (_svTab === 'resources') { renderSvResources(records, body); return; }
 }
 
+/* ── Student checklist done-state persisted in localStorage ── */
+function _svDoneKey() { return 'sv_done_' + (window._svEmail || ''); }
+function _getSvDoneMap() { try { return JSON.parse(localStorage.getItem(_svDoneKey()) || '{}'); } catch { return {}; } }
+function _setSvDone(itemId, checked) {
+  const m = _getSvDoneMap(); m[itemId] = checked;
+  localStorage.setItem(_svDoneKey(), JSON.stringify(m));
+}
+
 function renderSvHome(records, body) {
   const schedRec  = records.find(r => r.record_type === 'schedule');
   const checkRec  = records.find(r => r.record_type === 'checklist');
@@ -1452,7 +1454,10 @@ function renderSvHome(records, body) {
     .filter(i => i.status === 'scheduled' && i.date >= today)
     .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
   const nextFlight = upcoming[0];
-  const checkItems = (checkRec?.data?.items || []);
+  const _svDoneMap = _getSvDoneMap();
+  const checkItems = (checkRec?.data?.items || []).map(i => ({
+    ...i, done: _svDoneMap.hasOwnProperty(i.id) ? _svDoneMap[i.id] : (i.done || false)
+  }));
 
   const nextLabel = nextFlight ? (nextFlight.type === 'ground' ? 'Next Ground Lesson' : 'Next Flight') : '';
   const nextHtml = nextFlight ? `
@@ -1490,6 +1495,9 @@ function renderSvHome(records, body) {
 }
 
 async function svToggleCheck(itemId, checked) {
+  // Always persist to localStorage immediately so refresh survives any Supabase issue
+  _setSvDone(itemId, checked);
+
   const rec = (window._svRecords || []).find(r => r.record_type === 'checklist');
   if (!rec) return;
   const item = rec.data.items.find(i => i.id === itemId);
@@ -1510,7 +1518,7 @@ async function svToggleCheck(itemId, checked) {
       data: rec.data,
       updated_at: new Date().toISOString()
     });
-    if (error) { console.error('[svToggleCheck]', error); showToast('Could not save: ' + error.message); }
+    if (error) console.error('[svToggleCheck] Supabase save failed:', error);
   }
 }
 
@@ -1768,6 +1776,7 @@ let resTotal     = 0;
    TABS
 ══════════════════════════════════════ */
 function showTab(tab) {
+  location.hash = tab;
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".menu-item").forEach(b => b.classList.remove("active"));
@@ -3557,7 +3566,6 @@ async function openResource(id) {
   }
   activeResId = id;
   resPdfDoc   = null;
-  resPage     = 1;
   document.getElementById("resListView").style.display   = "none";
   document.getElementById("resViewerView").style.display = "block";
   document.getElementById("resViewerTitle").textContent = meta ? meta.name : "";
@@ -3574,79 +3582,85 @@ async function openResource(id) {
       if (!record) { showToast("PDF not found — please re-upload"); return; }
       typed = new Uint8Array(record.data);
     }
-    resPdfDoc   = await window.pdfjsLib.getDocument({ data: typed }).promise;
-    resTotal    = resPdfDoc.numPages;
-    await renderResPage(1);
+    resPdfDoc = await window.pdfjsLib.getDocument({ data: typed }).promise;
+    document.getElementById("resLoading").style.display = "none";
+    await renderResScrollable();
   } catch (err) {
     showToast(err.message || "Error loading PDF");
     console.error('[openResource]', err);
-  } finally {
     document.getElementById("resLoading").style.display = "none";
   }
 }
 
 function closeResViewer() {
   resPdfDoc = null;
+  document.getElementById("resScrollContainer").innerHTML = "";
   document.getElementById("resListView").style.display   = "block";
   document.getElementById("resViewerView").style.display = "none";
 }
 
-async function goToResPage(n) {
-  if (!resPdfDoc || n < 1 || n > resTotal) return;
-  await renderResPage(n);
+async function renderResScrollable() {
+  const container = document.getElementById("resScrollContainer");
+  if (!container || !resPdfDoc) return;
+  container.innerHTML = "";
+  const total = resPdfDoc.numPages;
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(async entry => {
+      if (!entry.isIntersecting) return;
+      const wrap = entry.target;
+      if (wrap.dataset.rendered) return;
+      wrap.dataset.rendered = "1";
+      obs.unobserve(wrap);
+      renderResPageInto(wrap, parseInt(wrap.dataset.page));
+    });
+  }, { rootMargin: "400px" });
+
+  for (let i = 1; i <= total; i++) {
+    const wrap = document.createElement("div");
+    wrap.className = "syl-page-wrap";
+    wrap.dataset.page = i;
+    const ph = document.createElement("div");
+    ph.className = "syl-page-placeholder";
+    ph.textContent = `Page ${i}`;
+    wrap.appendChild(ph);
+    container.appendChild(wrap);
+    obs.observe(wrap);
+  }
 }
 
-async function renderResPage(n) {
+async function renderResPageInto(wrap, n) {
   if (!resPdfDoc) return;
-  resPage = n;
-  const page    = await resPdfDoc.getPage(n);
-  const wrapper = document.getElementById("resCanvasWrapper");
-  const cssW    = wrapper.clientWidth || 340;
-  const vp0     = page.getViewport({ scale: 1 });
-  const scale   = cssW / vp0.width;
-  const vp      = page.getViewport({ scale });
-  const dpr     = window.devicePixelRatio || 1;
-
-  const pc     = document.getElementById("resPdfCanvas");
-  pc.width     = Math.round(vp.width * dpr);
-  pc.height    = Math.round(vp.height * dpr);
-  pc.style.width  = vp.width + "px";
-  pc.style.height = vp.height + "px";
-  wrapper.style.height = vp.height + "px";
-
-  const ctx = pc.getContext("2d");
-  ctx.scale(dpr, dpr);
-  await page.render({ canvasContext: ctx, viewport: vp }).promise;
-
-  document.getElementById("resPageInd").textContent    = `${n} / ${resTotal}`;
-  document.getElementById("resPrevBtn").disabled       = n <= 1;
-  document.getElementById("resNextBtn").disabled       = n >= resTotal;
+  try {
+    const page   = await resPdfDoc.getPage(n);
+    const cssW   = wrap.clientWidth || 340;
+    const vp0    = page.getViewport({ scale: 1 });
+    const vp     = page.getViewport({ scale: cssW / vp0.width });
+    const dpr    = window.devicePixelRatio || 1;
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.round(vp.width * dpr);
+    canvas.height = Math.round(vp.height * dpr);
+    canvas.style.width  = "100%";
+    canvas.style.height = "auto";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    wrap.innerHTML = "";
+    wrap.appendChild(canvas);
+  } catch (err) {
+    console.error("Res page render error:", err);
+  }
 }
 
 async function shareResPage() {
-  if (!resPdfDoc) return;
-  showToast("Preparing…");
-  try {
-    const pc  = document.getElementById("resPdfCanvas");
-    const out = document.createElement("canvas");
-    out.width = pc.width; out.height = pc.height;
-    out.getContext("2d").drawImage(pc, 0, 0);
-    const meta = resMeta.find(r => r.id === activeResId);
-    const name = meta ? `${meta.name} p${resPage}` : `page-${resPage}`;
-    out.toBlob(async blob => {
-      const file = new File([blob], `${name}.png`, { type: "image/png" });
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: name });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = `${name}.png`; a.click();
-        URL.revokeObjectURL(url);
-        showToast("Downloaded ✓");
-      }
-    }, "image/png");
-  } catch (err) {
-    showToast("Could not share page");
-    console.error(err);
+  const meta = resMeta.find(r => r.id === activeResId);
+  const url  = meta?.signedUrl;
+  if (!url) { showToast("No link available"); return; }
+  if (navigator.share) {
+    await navigator.share({ title: meta.name, url });
+  } else {
+    await navigator.clipboard.writeText(url);
+    showToast("Link copied ✓");
   }
 }
 
@@ -3705,7 +3719,9 @@ function initApp() {
   renderLineItems();
   buildLessonSelect();
   populateStudentSelects();
-  showTab('home');
+  const validTabs = new Set(['home','invoice','debrief','students','syllabus','resources','history','payments']);
+  const hash = location.hash.replace('#', '');
+  showTab(validTabs.has(hash) ? hash : 'home');
 }
 
 function populateStudentSelects() {
