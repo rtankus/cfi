@@ -203,6 +203,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .badge-invoice { background: var(--accent-dim); color: var(--accent); }
 .badge-debrief { background: var(--blue-dim); color: var(--blue); }
 .badge-session { background: rgba(180,140,255,0.15); color: #b48cff; }
+.badge-pair    { background: rgba(247,180,80,0.15);  color: #f7b450; }
 .history-delete-btn { background: none; border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text3); font-size: 16px; padding: 4px 8px; cursor: pointer; font-family: inherit; }
 .history-delete-btn:active { color: var(--danger); border-color: var(--danger); }
 .debrief-preview { font-size: 13px; color: var(--text2); margin-top: 8px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1224,6 +1225,7 @@ function renderStuSched(sid) {
     if (r.schedItemId) {
       if (r.type === 'debrief') debriefBySched[r.schedItemId] = true;
       else if (!r.type || r.type === 'invoice') invoiceBySched[r.schedItemId] = true;
+      else if (r.type === 'session') { debriefBySched[r.schedItemId] = true; invoiceBySched[r.schedItemId] = true; }
     }
   });
   const visibleItems = data.items.filter(item => {
@@ -1588,6 +1590,27 @@ function markInvoicePaid(id) {
   }
 }
 
+function svMarkInvoicePaid(id) {
+  markInvoicePaid(id);
+  (window._svRecords || []).forEach(r => {
+    if ((r.record_type === 'invoice' || r.record_type === 'session') && r.data && r.data.id === id) {
+      r.data.paid = true;
+      r.data.paidDate = new Date().toISOString();
+    }
+  });
+  renderSvHome(window._svRecords, document.getElementById('svBody'));
+}
+
+async function svDeleteInvoice(id, invNum) {
+  if (!confirm('Delete invoice #' + (invNum || id) + '?\n\nThis will remove it from the student\'s view.')) return;
+  saveHistory(getHistory().filter(r => r.id !== id));
+  renderHistory();
+  if (_sbUser) await _sb.from('student_records').delete().eq('id', String(id));
+  window._svRecords = (window._svRecords || []).filter(r => !(r.data && r.data.id === id));
+  renderSvHome(window._svRecords, document.getElementById('svBody'));
+  showToast('Invoice deleted');
+}
+
 /* ══════════════════════════════════════
    STUDENT VIEW — 4 TABS
 ══════════════════════════════════════ */
@@ -1725,9 +1748,13 @@ function renderSvHome(records, body) {
         <div style="font-size:16px;font-weight:700;color:var(--danger)">$${totalOutstanding.toFixed(2)}</div>
       </div>
       ${unpaidInvoices.map((inv, idx) => `
-        <div onclick="svShowInvoice(window._svUnpaidInvoices[${idx}])" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:0.5px solid rgba(255,107,107,0.2);cursor:pointer">
-          <div style="font-size:12px;color:var(--text2)">Invoice #${inv.invNum || '—'} · ${inv.invDate ? fmtDateStr(inv.invDate) : '—'}</div>
-          <div style="font-size:12px;font-weight:600;color:var(--danger)">$${(inv.total || 0).toFixed(2)} ›</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:0.5px solid rgba(255,107,107,0.2);gap:8px">
+          <div onclick="svShowInvoice(window._svUnpaidInvoices[${idx}])" style="font-size:12px;color:var(--text2);cursor:pointer;flex:1">Invoice #${inv.invNum || '—'} · ${inv.invDate ? fmtDateStr(inv.invDate) : '—'}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="font-size:12px;font-weight:600;color:var(--danger)">$${(inv.total || 0).toFixed(2)}</div>
+            <button onclick="event.stopPropagation();svMarkInvoicePaid(${inv.id})" style="background:rgba(200,240,160,0.15);border:0.5px solid rgba(200,240,160,0.4);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Mark Paid</button>
+            <button onclick="event.stopPropagation();svDeleteInvoice(${inv.id},'${inv.invNum||''}')" style="background:none;border:none;color:var(--text3);font-size:18px;line-height:1;cursor:pointer;padding:0 2px">×</button>
+          </div>
         </div>`).join('')}
     </div>` : '';
 
@@ -2953,6 +2980,88 @@ function populateHistoryStudentFilter() {
     students.filter(s => s.name).map(s => `<option value="${esc(s.name)}"${s.name===current?' selected':''}>${esc(s.name)}</option>`).join('');
 }
 
+function _buildInferredPairs(records, students) {
+  const studentToBilling = {}, billingToStudent = {};
+  students.forEach(s => {
+    if (s.name && s.billingName) {
+      studentToBilling[s.name] = s.billingName;
+      billingToStudent[s.billingName] = s.name;
+    }
+  });
+  // Don't re-pair records already linked via schedItemId
+  const linkedDebriefIds = new Set(), linkedInvoiceIds = new Set();
+  records.forEach(r => {
+    if (!r.schedItemId) return;
+    if (r.type === 'debrief') linkedDebriefIds.add(r.id);
+    if (!r.type || r.type === 'invoice') linkedInvoiceIds.add(r.id);
+  });
+  const orphanDebriefs  = records.filter(r => r.type === 'debrief' && !linkedDebriefIds.has(r.id));
+  const orphanInvoices  = records.filter(r => (!r.type || r.type === 'invoice') && !linkedInvoiceIds.has(r.id));
+  const usedInvoiceIds = new Set(), pairedDebriefIds = new Set();
+  const pairs = [];
+  for (const db of orphanDebriefs) {
+    const dbDate = db.date || '';
+    if (!dbDate) continue;
+    const dbMs = new Date(dbDate + 'T12:00:00').getTime();
+    const billing = studentToBilling[db.student];
+    const match = orphanInvoices.find(inv => {
+      if (usedInvoiceIds.has(inv.id)) return false;
+      const clientMatch = inv.client === db.student ||
+        (billing && inv.client === billing) ||
+        (billingToStudent[inv.client] && billingToStudent[inv.client] === db.student);
+      if (!clientMatch) return false;
+      const invDate = inv.invDate || '';
+      if (!invDate) return false;
+      return Math.abs(dbMs - new Date(invDate + 'T12:00:00').getTime()) / 86400000 <= 2;
+    });
+    if (match) {
+      pairs.push({ _paired: true, debrief: db, invoice: match, id: db.id });
+      usedInvoiceIds.add(match.id);
+      pairedDebriefIds.add(db.id);
+    }
+  }
+  return { pairs, pairedDebriefIds, usedInvoiceIds };
+}
+
+function generatePairPDF(type, id) {
+  const rec = getHistory().find(r => r.id === id);
+  if (!rec) return;
+  if (type === 'debrief') generateDebriefPDF(rec, 'view');
+  else generatePDF(rec, 'view');
+}
+
+function mergeInferredPair(dbId, invId) {
+  const history = getHistory();
+  const db  = history.find(r => r.id === dbId);
+  const inv = history.find(r => r.id === invId);
+  if (!db || !inv) return;
+  const merged = {
+    id: db.id, type: 'session', savedAt: new Date().toISOString(),
+    schedItemId: db.schedItemId || inv.schedItemId || undefined,
+    student: db.student, date: db.date,
+    airport: db.airport || '', aircraft: db.aircraft || '',
+    hours: db.hours || '', xc: db.xc || '', night: db.night || '', instrument: db.instrument || '',
+    lesson: db.lesson || '', sylKey: db.sylKey || null,
+    sessionType: db.sessionType || '', rating: db.rating || '',
+    wentWell: db.wentWell || '', needsWork: db.needsWork || '',
+    nextTime: db.nextTime || '', notes: db.notes || '',
+    biz: inv.biz || '', web: inv.web || '', phone: inv.phone || '',
+    client: inv.client || db.student,
+    invNum: inv.invNum || '', invDate: inv.invDate || db.date,
+    flights: inv.flights || [], lineItems: inv.lineItems || [],
+    invoiceNotes: inv.notes || '',
+    taxLabel: inv.taxLabel || '', taxAmount: inv.taxAmount || 0, total: inv.total || 0,
+    paid: inv.paid || false, paidDate: inv.paidDate || undefined,
+    attachmentNames: inv.attachmentNames || [],
+  };
+  const newHistory = history.filter(r => r.id !== dbId && r.id !== invId);
+  newHistory.push(merged);
+  saveHistory(newHistory);
+  _pushStudentRecord(merged);
+  renderHistory();
+  showToast('Merged into session ✓');
+}
+
 function renderHistory() {
   populateHistoryStudentFilter();
   const all = getHistory().sort((a,b)=>b.id-a.id);
@@ -2976,7 +3085,49 @@ function renderHistory() {
     el.innerHTML=`<div class="history-empty"><div class="icon">${icon}</div><p>No ${historyFilter==="all"?"records":historyFilter+"s"} yet.</p></div>`;
     return;
   }
-  el.innerHTML = filtered.map(inv => {
+
+  // Detect orphaned debrief+invoice pairs that belong to the same session
+  const { pairs, pairedDebriefIds, usedInvoiceIds } = _buildInferredPairs(filtered, getStudents());
+  const pairByDebriefId = Object.fromEntries(pairs.map(p => [p.debrief.id, p]));
+  const renderList = [];
+  filtered.forEach(r => {
+    if (r.type === 'debrief' && pairedDebriefIds.has(r.id)) {
+      renderList.push(pairByDebriefId[r.id]);
+    } else if ((!r.type || r.type === 'invoice') && usedInvoiceIds.has(r.id)) {
+      // skip — already included in its pair
+    } else {
+      renderList.push(r);
+    }
+  });
+
+  el.innerHTML = renderList.map(inv => {
+    // ── Inferred pair (old debrief + old invoice auto-matched) ──
+    if (inv._paired) {
+      const db = inv.debrief, invoice = inv.invoice;
+      const ratingPill = db.rating ? `<span class="overall-pill ${db.rating==="good"?"pill-good":db.rating==="ok"?"pill-ok":"pill-rough"}">${db.rating==="good"?"Great session":db.rating==="ok"?"Solid":"Tough day"}</span>` : "";
+      const preview = [db.wentWell,db.needsWork].filter(Boolean).join(" · ").slice(0,100);
+      return `<div class="history-item">
+        <div class="history-item-top">
+          <div class="history-item-info">
+            <div class="client">${db.student||"No student"}</div>
+            <div class="meta">${fmtDate(db.date)||"No date"}${db.airport?" · "+db.airport:""}${db.hours?" · "+db.hours+" hrs":""}${db.sessionType?" · "+(db.sessionType==="flt"?"✈ Flt":"📖 Gnd"):""}</div>
+            ${ratingPill}
+          </div>
+          <div class="history-item-right" style="flex-wrap:wrap;justify-content:flex-end;gap:4px">
+            <span class="history-type-badge badge-pair">Pair</span>
+            <span class="history-item-amount">$${(invoice.total||0).toFixed(2)}</span>
+            <button class="mark-paid-btn${invoice.paid?' paid-active':''}" style="${invoice.paid?'background:var(--accent-dim);border-color:rgba(200,240,160,0.3);color:var(--accent)':''}" onclick="markInvoicePaid(${invoice.id})">${invoice.paid?'Paid ✓':'Mark Paid'}</button>
+            <button class="history-delete-btn" onclick="generatePairPDF('debrief',${db.id})" title="Debrief PDF">Debrief</button>
+            <button class="history-delete-btn" onclick="generatePairPDF('invoice',${invoice.id})" title="Invoice PDF">Invoice</button>
+            <button class="history-delete-btn" style="background:rgba(180,140,255,0.15);color:#b48cff;border-color:rgba(180,140,255,0.4)" onclick="mergeInferredPair(${db.id},${invoice.id})">Merge →</button>
+            <button class="history-delete-btn" onclick="deleteRecord(event,${db.id})" title="Delete debrief">🗑D</button>
+            <button class="history-delete-btn" onclick="deleteRecord(event,${invoice.id})" title="Delete invoice">🗑I</button>
+          </div>
+        </div>
+        ${preview?`<div class="debrief-preview">${preview}</div>`:""}
+      </div>`;
+    }
+
     const isSession = inv.type === "session";
     const isDebrief = inv.type === "debrief";
     const safeInv = JSON.stringify(inv).replace(/"/g,'&quot;');
