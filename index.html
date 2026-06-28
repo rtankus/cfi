@@ -1913,7 +1913,7 @@ function renderSvProgress(records, body) {
     const num = parseInt(numStr);
     if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
     if (!syl[stageKey][type]) syl[stageKey][type] = {};
-    syl[stageKey][type][num] = true;
+    if (syl[stageKey][type][num] !== false) syl[stageKey][type][num] = true;
   });
   body.innerHTML = PPL_SYLLABUS.map(stage => {
     const st = syl[stage.key] || { f:{}, g:{} };
@@ -2675,7 +2675,7 @@ function autoCheckSyllabus(db) {
   const syl = getStuSyl(stu.id);
   if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
   if (!syl[stageKey][type]) syl[stageKey][type] = {};
-  syl[stageKey][type][num] = true;
+  if (syl[stageKey][type][num] !== false) syl[stageKey][type][num] = true;
   saveStuSyl(stu.id, syl, stu.email);
 }
 
