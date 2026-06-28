@@ -424,7 +424,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .mark-paid-btn { font-size: 11px; background: var(--accent-dim); border: 0.5px solid rgba(200,240,160,0.3); border-radius: 10px; padding: 3px 9px; color: var(--accent); cursor: pointer; font-family: inherit; font-weight: 600; }
 
 /* ── FLIGHT DETAIL SHEET (student view) ── */
-.fd-overlay { display: none; position: fixed; inset: 0; z-index: 450; background: rgba(0,0,0,0.55); }
+.fd-overlay { display: none; position: fixed; inset: 0; z-index: 10001; background: rgba(0,0,0,0.55); }
 .fd-overlay.open { display: block; }
 .fd-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 16px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); max-height: 80dvh; overflow-y: auto; }
 .fd-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--blue); margin-bottom: 6px; }
@@ -1651,8 +1651,16 @@ function renderSvHome(records, body) {
   const schedRec  = records.find(r => r.record_type === 'schedule');
   const checkRec  = records.find(r => r.record_type === 'checklist');
   const today     = new Date().toISOString().slice(0,10);
+
+  // Build debrief/invoice maps first so upcoming can exclude completed sessions
+  const debriefBySched = {}, invoiceBySched = {};
+  records.forEach(r => {
+    if (r.record_type === 'debrief' && r.data?.schedItemId) debriefBySched[r.data.schedItemId] = r.data;
+    if (r.record_type === 'invoice' && r.data?.schedItemId) invoiceBySched[r.data.schedItemId] = r.data;
+  });
+
   const upcoming  = (schedRec?.data?.items || [])
-    .filter(i => i.status === 'scheduled' && i.date >= today)
+    .filter(i => i.status === 'scheduled' && i.date >= today && !(debriefBySched[i.id] && invoiceBySched[i.id]))
     .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
   const nextFlight = upcoming[0];
   const _svDoneMap = _getSvDoneMap();
@@ -1663,13 +1671,6 @@ function renderSvHome(records, body) {
   const generalTasks = allCheckItems.filter(i => !i.listType || i.listType === 'general');
 
   window._svUpcoming = upcoming;
-
-  // Build completed sessions (have both debrief + invoice linked, not dismissed)
-  const debriefBySched = {}, invoiceBySched = {};
-  records.forEach(r => {
-    if (r.record_type === 'debrief' && r.data?.schedItemId) debriefBySched[r.data.schedItemId] = r.data;
-    if (r.record_type === 'invoice' && r.data?.schedItemId) invoiceBySched[r.data.schedItemId] = r.data;
-  });
   const dismissed = _getSvDismissed();
   const completedSessions = Object.keys(debriefBySched)
     .filter(sid => invoiceBySched[sid] && !dismissed[sid])
