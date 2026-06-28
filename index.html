@@ -2221,16 +2221,19 @@ function renderCFIHome() {
     else if (r.type === 'invoice') invoiceBySchedId[r.schedItemId] = r.id;
   });
 
-  const allItems = [];
+  const allItems = [], completedItems = [];
   students.forEach(stu => {
     const sched = getStuSched(stu.id);
     (sched.items || []).forEach(item => {
       const complete = sessionBySchedId[item.id] || (debriefBySchedId[item.id] && invoiceBySchedId[item.id]);
       if (item.status === 'scheduled' && item.date >= today && !complete) {
         allItems.push({ ...item, studentName: stu.name });
+      } else if (complete) {
+        completedItems.push({ ...item, studentName: stu.name, sessionId: sessionBySchedId[item.id], debriefId: debriefBySchedId[item.id], invoiceId: invoiceBySchedId[item.id] });
       }
     });
   });
+  completedItems.sort((a, b) => (b.date + (b.time||'')).localeCompare(a.date + (a.time||'')));
 
   allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
 
@@ -2254,9 +2257,44 @@ function renderCFIHome() {
         </div>`).join('')}
     </div>` : '';
 
-  if (!allItems.length) {
+  if (!allItems.length && !completedItems.length) {
     body.innerHTML = balanceHtml + '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.<br><br><button onclick="openAddLesson()" style="background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;padding:10px 20px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Add First Lesson</button></div>';
     return;
+  }
+
+  function renderFlightRow(item, sidKey, debriefIdVal, invoiceIdVal, sessionIdVal, showAddLesson) {
+    const isGround = item.type === 'ground';
+    const typeColor = isGround ? 'var(--amber)' : 'var(--blue)';
+    const typeLabel = isGround ? '📚 Ground' : '✈ Flight';
+    const hasSession = !!sessionIdVal;
+    const hasDebrief = !!debriefIdVal;
+    const hasInvoice = !!invoiceIdVal;
+    let actionBtns;
+    if (hasSession) {
+      actionBtns = `<button onclick="openSchedSession(${sessionIdVal})" style="flex:1;padding:7px 10px;background:rgba(180,140,255,0.15);border:0.5px solid rgba(180,140,255,0.4);border-radius:20px;font-size:12px;font-weight:600;color:#b48cff;font-family:inherit;cursor:pointer">Session ✓</button>`;
+    } else if (hasDebrief && hasInvoice) {
+      actionBtns = `<button onclick="openSchedDebrief(${debriefIdVal})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button><button onclick="openSchedInvoice(${invoiceIdVal})" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice ✓</button>`;
+    } else {
+      actionBtns = [
+        hasDebrief ? `<button onclick="openSchedDebrief(${debriefIdVal})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button>` : '',
+        `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${sidKey}','${esc(item.sylKey||'')}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Session</button>`,
+      ].join('');
+    }
+    return `<div style="padding:12px 14px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
+            <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.topic||'Lesson')}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text2)">${esc(item.studentName||'')}${item.time ? ' · '+fmt12(item.time) : ''}${item.aircraft ? ' · '+esc(item.aircraft) : ''}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        ${actionBtns}
+        ${showAddLesson ? `<button onclick="openAddLesson('${esc(item.studentName||'')}')" style="padding:7px 10px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;color:var(--text2);font-family:inherit;cursor:pointer">+ Lesson</button>` : ''}
+      </div>
+    </div>`;
   }
 
   let html = balanceHtml;
@@ -2269,42 +2307,26 @@ function renderCFIHome() {
     } else {
       html += '<div style="height:0.5px;background:var(--border);margin:0 14px"></div>';
     }
-    const isGround = item.type === 'ground';
-    const typeColor = isGround ? 'var(--amber)' : 'var(--blue)';
-    const typeLabel = isGround ? '📚 Ground' : '✈ Flight';
-    const sid = item.id;
-    const hasSession = !!sessionBySchedId[sid];
-    const hasDebrief = !!debriefBySchedId[sid];
-    const hasInvoice = !!invoiceBySchedId[sid];
-    let actionBtns;
-    if (hasSession) {
-      actionBtns = `<button onclick="openSchedSession(${sessionBySchedId[sid]})" style="flex:1;padding:7px 10px;background:rgba(180,140,255,0.15);border:0.5px solid rgba(180,140,255,0.4);border-radius:20px;font-size:12px;font-weight:600;color:#b48cff;font-family:inherit;cursor:pointer">Session ✓</button>`;
-    } else if (hasDebrief && hasInvoice) {
-      actionBtns = `<button onclick="openSchedDebrief(${debriefBySchedId[sid]})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button><button onclick="openSchedInvoice(${invoiceBySchedId[sid]})" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice ✓</button>`;
-    } else {
-      const oldBtns = [
-        hasDebrief ? `<button onclick="openSchedDebrief(${debriefBySchedId[sid]})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button>` : '',
-        `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${sid}','${esc(item.sylKey||'')}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Session</button>`,
-      ].join('');
-      actionBtns = oldBtns;
-    }
-    html += `<div style="padding:12px 14px">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
-            <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
-            <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.topic||'Lesson')}</span>
-          </div>
-          <div style="font-size:12px;color:var(--text2)">${esc(item.studentName||'')}${item.time ? ' · '+fmt12(item.time) : ''}${item.aircraft ? ' · '+esc(item.aircraft) : ''}</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:6px;margin-top:8px">
-        ${actionBtns}
-        <button onclick="openAddLesson('${esc(item.studentName||'')}')" style="padding:7px 10px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;color:var(--text2);font-family:inherit;cursor:pointer">+ Lesson</button>
-      </div>
-    </div>`;
+    html += renderFlightRow(item, item.id, debriefBySchedId[item.id], invoiceBySchedId[item.id], sessionBySchedId[item.id], true);
   });
   if (lastDate) html += '</div>';
+
+  if (completedItems.length) {
+    html += `<div class="section-label" style="margin-top:8px">Completed</div>`;
+    let lastCompDate = '';
+    completedItems.forEach(item => {
+      if (item.date !== lastCompDate) {
+        if (lastCompDate) html += '</div>';
+        html += `<div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:8px 2px 4px">${fmtDateStr(item.date)}</div><div class="card" style="margin-bottom:10px;opacity:0.85">`;
+        lastCompDate = item.date;
+      } else {
+        html += '<div style="height:0.5px;background:var(--border);margin:0 14px"></div>';
+      }
+      html += renderFlightRow(item, item.id, item.debriefId, item.invoiceId, item.sessionId, false);
+    });
+    if (lastCompDate) html += '</div>';
+  }
+
   body.innerHTML = html;
 }
 
