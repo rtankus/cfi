@@ -3542,7 +3542,10 @@ async function generatePDF(inv, share = false) {
   }
 
   const fileName = `invoice${invNum?"-"+invNum:""}-${(client||"client").replace(/\s+/g,"-")}.pdf`;
-  if (share) {
+  if (share === 'view') {
+    const url = doc.output('bloburl');
+    window.open(url, '_blank');
+  } else if (share) {
     const blob = doc.output("blob");
     const file = new File([blob], fileName, { type: "application/pdf" });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -3553,9 +3556,6 @@ async function generatePDF(inv, share = false) {
       URL.revokeObjectURL(url);
       showToast("PDF saved ✓");
     }
-  } else if (share === 'view') {
-    const url = doc.output('bloburl');
-    window.open(url, '_blank');
   } else {
     doc.save(fileName);
     showToast("PDF saved ✓");
