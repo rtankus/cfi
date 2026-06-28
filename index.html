@@ -202,6 +202,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .history-type-badge { font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
 .badge-invoice { background: var(--accent-dim); color: var(--accent); }
 .badge-debrief { background: var(--blue-dim); color: var(--blue); }
+.badge-session { background: rgba(180,140,255,0.15); color: #b48cff; }
 .history-delete-btn { background: none; border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text3); font-size: 16px; padding: 4px 8px; cursor: pointer; font-family: inherit; }
 .history-delete-btn:active { color: var(--danger); border-color: var(--danger); }
 .debrief-preview { font-size: 13px; color: var(--text2); margin-top: 8px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -497,8 +498,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
     </div>
     <div class="tabs">
       <button class="tab-btn active"  onclick="showTab('home')">Home</button>
-      <button class="tab-btn"         onclick="showTab('invoice')">Invoice</button>
-      <button class="tab-btn"         onclick="showTab('debrief')">Debrief</button>
+      <button class="tab-btn"         onclick="showTab('session')">Session</button>
       <button class="tab-btn menu-only" onclick="showTab('students')">Students</button>
       <button class="tab-btn menu-only" onclick="showTab('syllabus')">Syllabus</button>
       <button class="tab-btn menu-only" onclick="showTab('resources')">Resources</button>
@@ -539,79 +539,20 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   <div id="cfiHomeBody"></div>
 </div>
 
-<!-- ══════════ INVOICE PAGE ══════════ -->
-<div class="page" id="page-invoice">
+<!-- ══════════ SESSION PAGE (combined debrief + invoice) ══════════ -->
+<div class="page" id="page-session">
   <div class="page-header">
-    <span class="page-title">New Invoice</span>
+    <span class="page-title" id="sessionPageTitle">New Session</span>
     <div style="display:flex;gap:6px">
-      <button class="ghost-btn" onclick="saveAndGeneratePDF(true)">Share</button>
-      <button class="accent-btn" onclick="saveAndGeneratePDF()">Save & PDF</button>
-    </div>
-  </div>
-
-  <p class="section-label">Your business</p>
-  <div class="card"><div class="field-group">
-    <div class="field-row"><span class="field-label">Name</span><input type="text" id="bizName" value="Flight Training Services" /></div>
-    <div class="field-row"><span class="field-label">Website</span><input type="text" id="bizWeb" value="flyingwithraina.com" /></div>
-    <div class="field-row"><span class="field-label">Phone</span><input type="text" id="bizPhone" value="(346) 400-6668" /></div>
-  </div></div>
-
-  <p class="section-label">Client & invoice</p>
-  <div class="card"><div class="field-group">
-    <div class="field-row"><span class="field-label">Bill to</span><select id="clientName" class="field-sel"><option value="">— select —</option></select></div>
-    <div class="field-row"><span class="field-label">Invoice #</span><input type="text" id="invoiceNum" placeholder="001" /></div>
-    <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="invoiceDateSel"></div></div>
-  </div></div>
-
-  <p class="section-label">Flight log</p>
-  <div id="flightRows"></div>
-  <button class="add-btn" onclick="addFlight()">+ Add flight</button>
-
-  <p class="section-label">Line items</p>
-  <div id="lineItems"></div>
-  <button class="add-btn" onclick="addLineItem()">+ Add line item</button>
-
-  <p class="section-label">Notes</p>
-  <div class="card"><div class="field-group">
-    <div class="field-row stacked">
-      <textarea id="notes" placeholder="Notes for the client — fuel estimates, deferred charges, etc." style="overflow:hidden"></textarea>
-    </div>
-  </div></div>
-
-  <p class="section-label">Totals</p>
-  <div class="card">
-    <div class="totals-row"><span class="label">Subtotal</span><span class="value" id="subtotal">$0.00</span></div>
-    <div class="tax-row">
-      <input type="text" id="taxLabel" value="Tax / Fees (if applicable)" />
-      <div class="tax-amt"><span>$</span><input type="number" id="taxAmount" value="0" min="0" step="0.01" oninput="recalc()" /></div>
-    </div>
-    <div class="totals-row grand"><span class="label">Total due</span><span class="value" id="totalDue">$0.00</span></div>
-  </div>
-
-  <p class="section-label">Attachments</p>
-  <div class="upload-zone">
-    <input type="file" id="fileInput" accept="image/*,application/pdf" multiple onchange="handleFiles(this.files)" />
-    <div class="upload-icon">📎</div>
-    <p>Tap to attach receipts or photos</p>
-    <small>Images & PDFs included in output PDF</small>
-  </div>
-  <div class="attachments-list" id="attachmentsList"></div>
-</div>
-
-<!-- ══════════ DEBRIEF PAGE ══════════ -->
-<div class="page" id="page-debrief">
-  <div class="page-header">
-    <span class="page-title" id="debriefPageTitle">Flight Debrief</span>
-    <div style="display:flex;gap:6px">
-      <button class="ghost-btn" onclick="saveAndShareDebrief(true)">Share</button>
-      <button class="blue-btn" id="debriefSaveBtn" onclick="saveAndShareDebrief()">Save & PDF</button>
+      <button class="ghost-btn" onclick="saveAndGenerateSessionPDFs(true)">Share</button>
+      <button class="accent-btn" id="sessionSaveBtn" onclick="saveAndGenerateSessionPDFs()">Save & PDFs</button>
     </div>
   </div>
 
   <p class="section-label">Session info</p>
   <div class="card"><div class="field-group">
-    <div class="field-row"><span class="field-label">Student</span><select id="dbStudent" class="field-sel"><option value="">— select —</option></select></div>
-    <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="debriefDateSel"></div></div>
+    <div class="field-row"><span class="field-label">Student</span><select id="clientName" class="field-sel"><option value="">— select —</option></select></div>
+    <div class="field-row"><span class="field-label">Date</span><div class="date-select" id="invoiceDateSel"></div></div>
     <div class="field-row"><span class="field-label">Airport</span><input type="text" id="dbAirport" placeholder="KXXX" /></div>
     <div class="field-row"><span class="field-label">Aircraft</span><input type="text" id="dbAircraft" placeholder="N12345" /></div>
     <div class="field-row"><span class="field-label">Session type</span>
@@ -660,7 +601,57 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
     <div class="debrief-section-header"><div class="debrief-dot amber"></div><span>Additional notes</span></div>
     <textarea class="debrief-section" id="dbNotes" placeholder="Weather conditions, aircraft squawks, anything else…" style="border:none; border-radius:0; margin:0;"></textarea>
   </div>
+
+  <p class="section-label">Your business</p>
+  <div class="card"><div class="field-group">
+    <div class="field-row"><span class="field-label">Name</span><input type="text" id="bizName" value="Flight Training Services" /></div>
+    <div class="field-row"><span class="field-label">Website</span><input type="text" id="bizWeb" value="flyingwithraina.com" /></div>
+    <div class="field-row"><span class="field-label">Phone</span><input type="text" id="bizPhone" value="(346) 400-6668" /></div>
+  </div></div>
+
+  <p class="section-label">Invoice</p>
+  <div class="card"><div class="field-group">
+    <div class="field-row"><span class="field-label">Invoice #</span><input type="text" id="invoiceNum" placeholder="001" /></div>
+  </div></div>
+
+  <p class="section-label">Flight log</p>
+  <div id="flightRows"></div>
+  <button class="add-btn" onclick="addFlight()">+ Add flight</button>
+
+  <p class="section-label">Line items</p>
+  <div id="lineItems"></div>
+  <button class="add-btn" onclick="addLineItem()">+ Add line item</button>
+
+  <p class="section-label">Client notes</p>
+  <div class="card"><div class="field-group">
+    <div class="field-row stacked">
+      <textarea id="notes" placeholder="Notes for the client — fuel estimates, deferred charges, etc." style="overflow:hidden"></textarea>
+    </div>
+  </div></div>
+
+  <p class="section-label">Totals</p>
+  <div class="card">
+    <div class="totals-row"><span class="label">Subtotal</span><span class="value" id="subtotal">$0.00</span></div>
+    <div class="tax-row">
+      <input type="text" id="taxLabel" value="Tax / Fees (if applicable)" />
+      <div class="tax-amt"><span>$</span><input type="number" id="taxAmount" value="0" min="0" step="0.01" oninput="recalc()" /></div>
+    </div>
+    <div class="totals-row grand"><span class="label">Total due</span><span class="value" id="totalDue">$0.00</span></div>
+  </div>
+
+  <p class="section-label">Attachments</p>
+  <div class="upload-zone">
+    <input type="file" id="fileInput" accept="image/*,application/pdf" multiple onchange="handleFiles(this.files)" />
+    <div class="upload-icon">📎</div>
+    <p>Tap to attach receipts or photos</p>
+    <small>Images & PDFs included in output PDF</small>
+  </div>
+  <div class="attachments-list" id="attachmentsList"></div>
 </div>
+
+<!-- stub pages kept for showTab safety with old bookmarks -->
+<div class="page" id="page-invoice"></div>
+<div class="page" id="page-debrief"></div>
 
 <!-- ══════════ STUDENTS PAGE ══════════ -->
 <div class="page" id="page-students">
@@ -743,12 +734,12 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   </div>
 
   <div style="display:flex;gap:8px;margin-bottom:12px">
-    <button class="new-btn" style="margin:0" onclick="newInvoice()">+ Invoice</button>
-    <button class="new-debrief-btn" style="margin:0" onclick="newDebrief()">+ Debrief</button>
+    <button class="accent-btn" style="margin:0" onclick="newSession()">+ Session</button>
   </div>
 
   <div class="history-filter-row">
     <button class="filter-btn active" id="filterAll"     onclick="setFilter('all')">All</button>
+    <button class="filter-btn"        id="filterSession" onclick="setFilter('session')">Sessions</button>
     <button class="filter-btn"        id="filterInvoice" onclick="setFilter('invoice')">Invoices</button>
     <button class="filter-btn"        id="filterDebrief" onclick="setFilter('debrief')">Debriefs</button>
     <select id="historyStudentSel" onchange="setHistoryStudentFilter(this.value)" style="margin-left:auto;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;padding:6px 12px;font-size:13px;color:var(--text);font-family:inherit;cursor:pointer;max-width:140px">
@@ -1227,8 +1218,21 @@ async function _pullAndRenderStuCheck(sid) {
 function renderStuSched(sid) {
   const data = getStuSched(sid);
   const el = document.getElementById(`stu-sched-list-${sid}`);
-  if (!data.items.length) { el.innerHTML = '<div style="padding:12px 14px;font-size:13px;color:var(--text3)">No lessons scheduled yet.</div>'; return; }
-  el.innerHTML = data.items.map(item => {
+  const today = new Date().toISOString().slice(0,10);
+  const debriefBySched = {}, invoiceBySched = {};
+  getHistory().forEach(r => {
+    if (r.schedItemId) {
+      if (r.type === 'debrief') debriefBySched[r.schedItemId] = true;
+      else if (!r.type || r.type === 'invoice') invoiceBySched[r.schedItemId] = true;
+    }
+  });
+  const visibleItems = data.items.filter(item => {
+    if (item.pending || _schedEditMode.has(`${sid}_${item.id}`)) return true;
+    const complete = debriefBySched[item.id] && invoiceBySched[item.id];
+    return item.status === 'scheduled' && item.date >= today && !complete;
+  });
+  if (!visibleItems.length) { el.innerHTML = '<div style="padding:12px 14px;font-size:13px;color:var(--text3)">No upcoming lessons scheduled.</div>'; return; }
+  el.innerHTML = visibleItems.map(item => {
     if (item.pending) {
       return `
       <div class="sched-item pending">
@@ -2297,21 +2301,25 @@ function openSchedInvoice(recordId) {
 }
 
 function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType, itemId, sylKey) {
-  newDebrief();
+  newSession(date || null);
   _pendingSchedItemId = itemId || null;
-  const stuSel = document.getElementById('dbStudent');
+  const stuSel = document.getElementById('clientName');
   if (stuSel) stuSel.value = studentName;
   if (aircraft) document.getElementById('dbAircraft').value = aircraft;
-  if (date) buildDateSelects('debriefDateSel', date);
+  if (date) {
+    buildDateSelects('invoiceDateSel', date);
+    flights = [{ date, airport: '', hobbsIn: '', hobbsOut: '' }];
+    renderFlights();
+  }
   if (topic) setDbLesson(sylKey || null, topic);
   if (sessionType) setSessionType(sessionType);
 }
 
 function cfiHomeInvoice(studentName, itemId, date) {
-  newInvoice(date || null);
+  newSession(date || null);
   _pendingSchedItemId = itemId || null;
-  const clientSel = document.getElementById('clientName');
-  if (clientSel) clientSel.value = studentName;
+  const stuSel = document.getElementById('clientName');
+  if (stuSel) stuSel.value = studentName;
 }
 
 function toggleMenu() {
@@ -2589,7 +2597,7 @@ function syncAllDebriefSyllabus() {
       const num = parseInt(numStr);
       if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
       if (!syl[stageKey][type]) syl[stageKey][type] = {};
-      if (!syl[stageKey][type][num]) { syl[stageKey][type][num] = true; changed = true; }
+      if (syl[stageKey][type][num] == null) { syl[stageKey][type][num] = true; changed = true; }
     });
     // Always push so Supabase student_records stays in sync with local cache
     saveStuSyl(stu.id, syl, stu.email);
@@ -2611,8 +2619,8 @@ function setSessionType(t) {
 function collectDebrief() {
   return {
     id: editingDebriefId || Date.now(), type: "debrief", savedAt: new Date().toISOString(), schedItemId: _pendingSchedItemId || undefined,
-    student:     document.getElementById("dbStudent").value,
-    date:        getDateFromSel("debriefDateSel"),
+    student:     document.getElementById("clientName").value,
+    date:        getDateFromSel("invoiceDateSel"),
     airport:     document.getElementById("dbAirport").value,
     aircraft:    document.getElementById("dbAircraft").value,
     hours:       document.getElementById("dbHours").value,
@@ -2656,43 +2664,155 @@ function saveDebrief() {
 }
 
 function loadDebriefIntoForm(db) {
-  db = cleanDebriefText(db);
-  editingDebriefId = db.id;
-  _pendingSchedItemId = db.schedItemId || null;
-  document.getElementById("dbStudent").value  = db.student  || "";
-  document.getElementById("dbAirport").value  = db.airport  || "";
-  document.getElementById("dbAircraft").value = db.aircraft || "";
-  document.getElementById("dbHours").value      = db.hours      || "";
-  document.getElementById("dbXC").value         = db.xc         || "";
-  document.getElementById("dbNight").value      = db.night      || "";
-  document.getElementById("dbInstrument").value = db.instrument || "";
-  setDbLesson(db.sylKey || null, db.lesson || "");
-  document.getElementById("dbWentWell").value = db.wentWell || "";
-  document.getElementById("dbNeedsWork").value= db.needsWork|| "";
-  document.getElementById("dbNextTime").value = db.nextTime || "";
-  document.getElementById("dbNotes").value    = db.notes    || "";
-  ["dbWentWell","dbNeedsWork","dbNextTime","dbNotes"].forEach(id => autoGrow(document.getElementById(id)));
-  setRating(db.rating || "");
-  setSessionType(db.sessionType || "");
-  buildDateSelects("debriefDateSel", db.date);
-  document.getElementById("debriefPageTitle").textContent = "Edit Debrief";
-  document.getElementById("debriefSaveBtn").textContent = "Update";
-  showTab("debrief");
-  showToast("Debrief loaded — tap Update to save changes");
+  loadSessionIntoForm(cleanDebriefText(db));
 }
 
-function newDebrief() {
+function newDebrief() { newSession(); }
+
+/* ══════════════════════════════════════
+   SESSION (combined debrief + invoice)
+══════════════════════════════════════ */
+function newSession(prefillDate) {
+  const dateStr = prefillDate || todayStr();
   editingDebriefId = null;
   _pendingSchedItemId = null;
-  ["dbStudent","dbAirport","dbAircraft","dbHours","dbXC","dbNight","dbInstrument","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
-    .forEach(id => document.getElementById(id).value = "");
+  document.getElementById("clientName").value = "";
+  ["dbAirport","dbAircraft","dbHours","dbXC","dbNight","dbInstrument","dbWentWell","dbNeedsWork","dbNextTime","dbNotes"]
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   setDbLesson(null, "");
   setRating("");
   setSessionType("");
-  buildDateSelects("debriefDateSel", todayStr());
-  document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
-  document.getElementById("debriefSaveBtn").textContent = "Save & PDF";
-  showTab("debrief");
+  document.getElementById("invoiceNum").value = dateToInvoicePrefix(dateStr);
+  document.getElementById("notes").value = "";
+  document.getElementById("taxLabel").value = "Tax / Fees (if applicable)";
+  document.getElementById("taxAmount").value = "0";
+  flights = [{ date: dateStr, airport: "", hobbsIn: "", hobbsOut: "" }];
+  lineItems = [
+    { name: "Flight Instruction", rate: 40,   qty: 0, unit: "hr"  },
+    { name: "Ground Instruction", rate: 40,   qty: 0, unit: "hr"  },
+    { name: "Aircraft Rental",    rate: 75,   qty: 0, unit: "hr"  },
+    { name: "Fuel Charges",       rate: 6.55, qty: 0, unit: "gal" },
+  ];
+  attachments = [];
+  buildDateSelects("invoiceDateSel", dateStr);
+  renderFlights(); renderLineItems(); renderAttachments(); recalc();
+  document.getElementById("sessionPageTitle").textContent = "New Session";
+  document.getElementById("sessionSaveBtn").textContent = "Save & PDFs";
+  showTab("session");
+}
+
+function loadSessionIntoForm(session) {
+  editingDebriefId = session.id;
+  _pendingSchedItemId = session.schedItemId || null;
+  document.getElementById("clientName").value   = session.student || session.client || "";
+  document.getElementById("dbAirport").value    = session.airport || "";
+  document.getElementById("dbAircraft").value   = session.aircraft || "";
+  document.getElementById("dbHours").value      = session.hours || "";
+  document.getElementById("dbXC").value         = session.xc || "";
+  document.getElementById("dbNight").value      = session.night || "";
+  document.getElementById("dbInstrument").value = session.instrument || "";
+  setDbLesson(session.sylKey || null, session.lesson || "");
+  setSessionType(session.sessionType || "");
+  setRating(session.rating || "");
+  buildDateSelects("invoiceDateSel", session.date || session.invDate);
+  document.getElementById("dbWentWell").value  = session.wentWell  || "";
+  document.getElementById("dbNeedsWork").value = session.needsWork || "";
+  document.getElementById("dbNextTime").value  = session.nextTime  || "";
+  document.getElementById("dbNotes").value     = session.notes     || "";
+  ["dbWentWell","dbNeedsWork","dbNextTime","dbNotes"].forEach(id => autoGrow(document.getElementById(id)));
+  document.getElementById("bizName").value  = session.biz   || "Flight Training Services";
+  document.getElementById("bizWeb").value   = session.web   || "flyingwithraina.com";
+  document.getElementById("bizPhone").value = session.phone || "(346) 400-6668";
+  document.getElementById("invoiceNum").value = session.invNum || "";
+  document.getElementById("notes").value    = session.invoiceNotes || (session.type === "invoice" ? session.notes : "") || "";
+  document.getElementById("taxLabel").value  = session.taxLabel  || "Tax / Fees (if applicable)";
+  document.getElementById("taxAmount").value = session.taxAmount || 0;
+  flights    = session.flights   || [{ date: session.date || todayStr(), airport: session.airport || "", hobbsIn: "", hobbsOut: "" }];
+  lineItems  = session.lineItems || [];
+  attachments = [];
+  renderFlights(); renderLineItems(); renderAttachments(); recalc();
+  document.getElementById("sessionPageTitle").textContent = "Edit Session";
+  document.getElementById("sessionSaveBtn").textContent = "Update";
+  showTab("session");
+  showToast("Loaded — tap Update to save changes");
+}
+
+function collectCurrentSession() {
+  const sub = lineItems.reduce((s, it) => s + (it.rate * it.qty), 0);
+  const tax  = parseFloat(document.getElementById("taxAmount").value) || 0;
+  const date = getDateFromSel("invoiceDateSel");
+  const student = document.getElementById("clientName").value;
+  return {
+    id: editingDebriefId || Date.now(),
+    type: "session",
+    savedAt: new Date().toISOString(),
+    schedItemId: _pendingSchedItemId || undefined,
+    student, date,
+    airport:      document.getElementById("dbAirport").value,
+    aircraft:     document.getElementById("dbAircraft").value,
+    hours:        document.getElementById("dbHours").value,
+    xc:           document.getElementById("dbXC").value,
+    night:        document.getElementById("dbNight").value,
+    instrument:   document.getElementById("dbInstrument").value,
+    lesson:       dbLessonText(),
+    sylKey:       dbLessonSylKey(),
+    sessionType:  dbSessionType,
+    rating:       dbRating,
+    wentWell:     document.getElementById("dbWentWell").value,
+    needsWork:    document.getElementById("dbNeedsWork").value,
+    nextTime:     document.getElementById("dbNextTime").value,
+    notes:        document.getElementById("dbNotes").value,
+    biz:          document.getElementById("bizName").value,
+    web:          document.getElementById("bizWeb").value,
+    phone:        document.getElementById("bizPhone").value,
+    client:       student,
+    invNum:       document.getElementById("invoiceNum").value,
+    invDate:      date,
+    flights:      JSON.parse(JSON.stringify(flights)),
+    lineItems:    JSON.parse(JSON.stringify(lineItems)),
+    invoiceNotes: document.getElementById("notes").value,
+    taxLabel:     document.getElementById("taxLabel").value,
+    taxAmount:    tax,
+    total:        sub + tax,
+    attachmentNames: attachments.map(a => a.name),
+  };
+}
+
+function saveAndGenerateSessionPDFs(share = false) {
+  const session = collectCurrentSession();
+  if (!session.student && !session.wentWell && !session.needsWork && !session.notes && !session.nextTime && !session.total) {
+    showToast("Add some content first"); return;
+  }
+  const history = getHistory();
+  const isNew = !editingDebriefId;
+  if (editingDebriefId) {
+    const idx = history.findIndex(r => r.id === editingDebriefId);
+    if (idx !== -1) history[idx] = session; else history.push(session);
+    editingDebriefId = null;
+    document.getElementById("sessionPageTitle").textContent = "New Session";
+    document.getElementById("sessionSaveBtn").textContent = "Save & PDFs";
+  } else {
+    history.push(session);
+  }
+  saveHistory(history);
+  _pushStudentRecord(session);
+  autoCheckSyllabus(session);
+  if (isNew && session.student) {
+    const stu = getStudents().find(s => s.name === session.student);
+    if (stu?.email) notifyStudent(stu.email, 'debrief', session);
+  }
+  if (isNew) newSession();
+  showToast("Saved ✓  Generating PDFs…");
+  const mode = share ? 'share' : 'download';
+  setTimeout(async () => {
+    generateDebriefPDF(session, mode);
+    setTimeout(() => generatePDF({ ...session, notes: session.invoiceNotes || "" }, share), 700);
+  }, 300);
+}
+
+function openSchedSession(recordId) {
+  const session = getHistory().find(r => r.id === recordId);
+  if (session) loadSessionIntoForm(session);
 }
 
 /* ══════════════════════════════════════
@@ -2997,50 +3117,14 @@ function collectCurrentInvoice() {
   };
 }
 
-function loadInvoiceIntoForm(inv) {
-  _pendingSchedItemId = inv.schedItemId || null;
-  document.getElementById("bizName").value   = inv.biz   ||"";
-  document.getElementById("bizWeb").value    = inv.web   ||"";
-  document.getElementById("bizPhone").value  = inv.phone ||"";
-  document.getElementById("clientName").value= inv.client||"";
-  document.getElementById("invoiceNum").value= inv.invNum||"";
-  document.getElementById("notes").value     = inv.notes ||"";
-  document.getElementById("taxLabel").value  = inv.taxLabel||"";
-  document.getElementById("taxAmount").value = inv.taxAmount||0;
-  flights=inv.flights||[{date:"",airport:"",hobbsIn:"",hobbsOut:""}];
-  lineItems=inv.lineItems||[];
-  attachments=[];
-  buildDateSelects("invoiceDateSel", inv.invDate);
-  renderFlights(); renderLineItems(); renderAttachments(); recalc();
-  showTab("invoice");
-  showToast("Invoice loaded");
-}
+function loadInvoiceIntoForm(inv) { loadSessionIntoForm(inv); }
 
 function dateToInvoicePrefix(dateStr) {
   const d = new Date((dateStr || todayStr()) + "T12:00:00");
   return `${pad(d.getMonth()+1)}${pad(d.getDate())}${String(d.getFullYear()).slice(-2)}-`;
 }
 
-function newInvoice(prefillDate) {
-  const dateStr = prefillDate || todayStr();
-  _pendingSchedItemId = null;
-  document.getElementById("clientName").value="";
-  document.getElementById("invoiceNum").value=dateToInvoicePrefix(dateStr);
-  document.getElementById("notes").value="";
-  document.getElementById("taxLabel").value="Tax / Fees (if applicable)";
-  document.getElementById("taxAmount").value="0";
-  flights=[{date:dateStr,airport:"",hobbsIn:"",hobbsOut:""}];
-  lineItems=[
-    {name:"Flight Instruction",rate:40,qty:0,unit:"hr"},
-    {name:"Ground Instruction",rate:40,qty:0,unit:"hr"},
-    {name:"Aircraft Rental",rate:75,qty:0,unit:"hr"},
-    {name:"Fuel Charges",rate:6.55,qty:0,unit:"gal"},
-  ];
-  attachments=[];
-  buildDateSelects("invoiceDateSel", dateStr);
-  renderFlights(); renderLineItems(); renderAttachments(); recalc();
-  showTab("invoice");
-}
+function newInvoice(prefillDate) { newSession(prefillDate); }
 
 /* ══════════════════════════════════════
    EXPORT / IMPORT
@@ -3109,19 +3193,7 @@ async function ensurePDFJS() {
 /* ══════════════════════════════════════
    INVOICE PDF
 ══════════════════════════════════════ */
-function saveAndGeneratePDF(share = false) {
-  const inv = collectCurrentInvoice();
-  const history = getHistory();
-  history.push(inv);
-  saveHistory(history);
-  _pushStudentRecord(inv);
-  showToast("Saved ✓  Generating PDF…");
-  if (inv.client) {
-    const stu = getStudents().find(s => s.name === inv.client || (s.billingName && s.billingName === inv.client));
-    if (stu?.email) notifyStudent(stu.email, 'invoice', inv);
-  }
-  setTimeout(() => generatePDF(inv, share), 300);
-}
+function saveAndGeneratePDF(share = false) { saveAndGenerateSessionPDFs(share); }
 
 async function generatePDF(inv, share = false) {
   const { jsPDF } = window.jspdf;
@@ -3304,30 +3376,7 @@ function showToast(msg) {
 /* ══════════════════════════════════════
    DEBRIEF PDF / SHARE
 ══════════════════════════════════════ */
-function saveAndShareDebrief(share = false) {
-  const db = collectDebrief();
-  if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime) { showToast("Add some content first"); return; }
-  const history = getHistory();
-  const isNew = !editingDebriefId;
-  if (editingDebriefId) {
-    const idx = history.findIndex(r => r.id === editingDebriefId);
-    if (idx !== -1) history[idx] = db; else history.push(db);
-    editingDebriefId = null;
-    document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
-    document.getElementById("debriefSaveBtn").textContent = "Save & PDF";
-  } else {
-    history.push(db);
-  }
-  saveHistory(history);
-  _pushStudentRecord(db);
-  if (isNew && db.student) {
-    const stu = getStudents().find(s => s.name === db.student);
-    if (stu?.email) notifyStudent(stu.email, 'debrief', db);
-  }
-  if (isNew) newDebrief();
-  showToast("Saved ✓  Generating PDF…");
-  setTimeout(() => generateDebriefPDF(db, share ? 'share' : 'download'), 300);
-}
+function saveAndShareDebrief(share = false) { saveAndGenerateSessionPDFs(share); }
 
 async function generateDebriefPDF(db, mode = 'share') {
   db = cleanDebriefText(db);
