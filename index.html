@@ -2225,7 +2225,7 @@ function renderCFIHome() {
   allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
 
   // Outstanding balance bar
-  const unpaidInvs = getHistory().filter(r => (r.type === 'invoice' || r.type === 'session') && !r.paid);
+  const unpaidInvs = getHistory().filter(r => (!r.type || r.type === 'invoice' || r.type === 'session') && !r.paid);
   const totalOwed = unpaidInvs.reduce((s, r) => s + (r.total || 0), 0);
   const balanceHtml = unpaidInvs.length ? `
     <div style="background:rgba(255,107,107,0.1);border:0.5px solid rgba(255,107,107,0.35);border-radius:12px;padding:12px 14px;margin-bottom:14px">
