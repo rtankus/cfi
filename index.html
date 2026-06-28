@@ -306,9 +306,15 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-body { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 .sv-signout { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 6px 12px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
 .sv-theme-btn { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 5px 9px; font-size: 14px; cursor: pointer; line-height: 1; }
-#studentScreen.light { --bg: #f0f0f0; --surface: #ffffff; --surface2: #f5f5f5; --surface3: #ebebeb; --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18); --text: #1a1a1a; --text2: #555; --text3: #999; }
+#studentScreen.light { --bg: #f0f0f0; --surface: #ffffff; --surface2: #f5f5f5; --surface3: #e8e8e8; --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18); --text: #1a1a1a; --text2: #555; --text3: #666; --accent: #3a7d1a; --accent-dim: rgba(58,125,26,0.1); --accent-text: #ffffff; --blue: #1a65c0; --blue-dim: rgba(26,101,192,0.1); --amber: #9a5f00; --amber-dim: rgba(154,95,0,0.1); --danger: #c0392b; }
 #studentScreen.light .sv-header { background: rgba(240,240,240,0.95); }
 #studentScreen.light input, #studentScreen.light select, #studentScreen.light textarea { color: var(--text); background: var(--surface); }
+#studentScreen.light .page-indicator { background: rgba(0,0,0,0.1); color: var(--text2); }
+#studentScreen.light .sv-next-flight { border-color: rgba(26,101,192,0.25); }
+#studentScreen.light .new-btn { border-color: rgba(58,125,26,0.3); }
+#studentScreen.light .new-debrief-btn { border-color: rgba(26,101,192,0.25); }
+#studentScreen.light .pill-good, #studentScreen.light .rating-btn.selected-good { background: rgba(58,125,26,0.12); }
+#studentScreen.light .pill-rough, #studentScreen.light .rating-btn.selected-rough { background: rgba(192,57,43,0.1); }
 .sv-card { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); margin-bottom: 10px; overflow: hidden; }
 .sv-card-header { padding: 12px 14px 8px; border-bottom: 0.5px solid var(--border); }
 .sv-card-meta { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
@@ -402,6 +408,19 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-pay-badge.paid { background: var(--accent-dim); color: var(--accent); }
 .sv-pay-badge.unpaid { background: rgba(255,107,107,0.15); color: var(--danger); }
 .mark-paid-btn { font-size: 11px; background: var(--accent-dim); border: 0.5px solid rgba(200,240,160,0.3); border-radius: 10px; padding: 3px 9px; color: var(--accent); cursor: pointer; font-family: inherit; font-weight: 600; }
+
+/* ── FLIGHT DETAIL SHEET (student view) ── */
+.fd-overlay { display: none; position: fixed; inset: 0; z-index: 450; background: rgba(0,0,0,0.55); }
+.fd-overlay.open { display: block; }
+.fd-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 16px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); max-height: 80dvh; overflow-y: auto; }
+.fd-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--blue); margin-bottom: 6px; }
+.fd-title { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+.fd-meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.fd-pill { background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 20px; padding: 5px 12px; font-size: 13px; color: var(--text2); }
+.fd-notes { background: var(--surface2); border-radius: var(--radius-sm); padding: 12px; font-size: 14px; line-height: 1.55; color: var(--text); margin-bottom: 14px; }
+.fd-cal-btn { width: 100%; padding: 13px; background: rgba(126,184,247,0.15); border: 0.5px solid rgba(126,184,247,0.4); border-radius: var(--radius); font-size: 15px; font-weight: 600; color: var(--blue); font-family: inherit; cursor: pointer; }
+.fd-cal-btn:active { opacity: 0.75; }
+.fd-close { position: absolute; top: 18px; right: 16px; background: var(--surface2); border: none; border-radius: 50%; width: 30px; height: 30px; font-size: 16px; color: var(--text2); cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; }
 
 /* ── ADD LESSON SHEET ── */
 .al-overlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.55); }
@@ -767,6 +786,14 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <textarea class="al-field" id="alNotes" placeholder="Notes for student… (opt.)" style="min-height:64px;resize:none;line-height:1.5"></textarea>
     </div>
     <button class="al-save" onclick="saveAddLesson()">Add to Schedule</button>
+  </div>
+</div>
+
+<!-- ══════════ FLIGHT DETAIL SHEET ══════════ -->
+<div class="fd-overlay" id="fdOverlay" onclick="closeFlightDetail()">
+  <div class="fd-sheet" onclick="event.stopPropagation()" style="position:relative">
+    <button class="fd-close" onclick="closeFlightDetail()">✕</button>
+    <div id="fdContent"></div>
   </div>
 </div>
 
@@ -1461,12 +1488,12 @@ function renderSvHome(records, body) {
 
   const nextLabel = nextFlight ? (nextFlight.type === 'ground' ? 'Next Ground Lesson' : 'Next Flight') : '';
   const nextHtml = nextFlight ? `
-    <div class="sv-next-flight">
+    <div class="sv-next-flight" onclick='showFlightDetail(${JSON.stringify(nextFlight)})' style="cursor:pointer">
       <div class="sv-next-label">${nextLabel}</div>
       <div class="sv-next-title">${esc(nextFlight.topic || 'Lesson')}</div>
       <div class="sv-next-meta">${nextFlight.date ? fmtDateStr(nextFlight.date) : ''}${nextFlight.time ? ' · ' + fmt12(nextFlight.time) : ''}${nextFlight.aircraft ? ' · ' + esc(nextFlight.aircraft) : ''}</div>
       ${nextFlight.notes ? `<div class="sv-next-notes">${esc(nextFlight.notes)}</div>` : ''}
-      <button onclick='exportToCalendar(${JSON.stringify(nextFlight)})' style="margin-top:10px;background:rgba(126,184,247,0.2);border:0.5px solid rgba(126,184,247,0.4);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Add to Calendar</button>
+      <button onclick='event.stopPropagation();exportToCalendar(${JSON.stringify(nextFlight)})' style="margin-top:10px;background:rgba(126,184,247,0.2);border:0.5px solid rgba(126,184,247,0.4);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Add to Calendar</button>
     </div>` : '';
 
   const checkHtml = checkItems.length ? `
@@ -1482,11 +1509,12 @@ function renderSvHome(records, body) {
     </div>` : '';
 
   const upcomingMore = upcoming.slice(1).map(i => `
-    <div class="sv-card" style="flex-direction:row;align-items:center;padding:10px 14px;display:flex;gap:10px">
+    <div class="sv-card" onclick='showFlightDetail(${JSON.stringify(i)})' style="flex-direction:row;align-items:center;padding:10px 14px;display:flex;gap:10px;cursor:pointer">
       <div style="flex:1">
         <div style="font-size:14px;font-weight:600">${esc(i.topic||'Lesson')}</div>
-        <div style="font-size:12px;color:var(--text2)">${i.date ? fmtDateStr(i.date) : ''}${i.time ? ' · '+fmt12(i.time) : ''}</div>
+        <div style="font-size:12px;color:var(--text2)">${i.date ? fmtDateStr(i.date) : ''}${i.time ? ' · '+fmt12(i.time) : ''}${i.aircraft ? ' · '+esc(i.aircraft) : ''}</div>
       </div>
+      <div style="font-size:18px;color:var(--text3)">›</div>
     </div>`).join('');
 
   body.innerHTML = nextHtml + checkHtml +
@@ -1520,6 +1548,27 @@ async function svToggleCheck(itemId, checked) {
     });
     if (error) console.error('[svToggleCheck] Supabase save failed:', error);
   }
+}
+
+function showFlightDetail(item) {
+  const label = item.type === 'ground' ? 'Ground Lesson' : 'Flight';
+  const pills = [
+    item.date ? fmtDateStr(item.date) : null,
+    item.time ? fmt12(item.time) : null,
+    item.aircraft ? item.aircraft : null,
+  ].filter(Boolean).map(p => `<span class="fd-pill">${esc(p)}</span>`).join('');
+
+  document.getElementById('fdContent').innerHTML = `
+    <div class="fd-label">${label}</div>
+    <div class="fd-title">${esc(item.topic || 'Lesson')}</div>
+    ${pills ? `<div class="fd-meta-row">${pills}</div>` : ''}
+    ${item.notes ? `<div class="fd-notes">${esc(item.notes)}</div>` : ''}
+    <button class="fd-cal-btn" onclick='exportToCalendar(${JSON.stringify(item)})'>+ Add to Calendar</button>
+  `;
+  document.getElementById('fdOverlay').classList.add('open');
+}
+function closeFlightDetail() {
+  document.getElementById('fdOverlay').classList.remove('open');
 }
 
 function renderSvProgress(records, body) {
