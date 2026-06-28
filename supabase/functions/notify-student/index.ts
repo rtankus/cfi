@@ -188,6 +188,19 @@ function buildEmail(
     };
   }
 
+  if (type === "checklist_done") {
+    const text = data.text ? String(data.text) : "A task";
+    const studentEmail = data.studentEmail ? String(data.studentEmail) : "Your student";
+    return {
+      subject: `Student completed a task`,
+      html: layout(`
+        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">Task Completed ✓</h2>
+        <p style="margin:0 0 20px;color:#555">${studentEmail} marked a task as done.</p>
+        ${section("Task", text, "#22c55e")}
+      `),
+    };
+  }
+
   return null;
 }
 

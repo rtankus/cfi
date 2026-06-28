@@ -1679,6 +1679,19 @@ async function svToggleCheck(itemId, checked) {
       updated_at: new Date().toISOString()
     });
     if (error) console.error('[svToggleCheck] Supabase save failed:', error);
+
+    if (checked) {
+      try {
+        await _sb.functions.invoke('notify-student', {
+          body: {
+            direct: true,
+            record_type: 'checklist_done',
+            student_email: 'tankusraina@gmail.com',
+            data: { text: item.text, listType: item.listType, studentEmail: _sbUser.email }
+          }
+        });
+      } catch(e) { console.error('[notify CFI checklist_done]', e); }
+    }
   }
 }
 
