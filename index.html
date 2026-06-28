@@ -1179,10 +1179,13 @@ async function saveStuCheck(sid, data, email) {
     if (error) { console.error('[saveStuCheck]', error); showToast('Checklist sync error: ' + error.message); }
   }
 }
-function saveStuSyl(sid, data, email) {
+async function saveStuSyl(sid, data, email) {
   const v = JSON.stringify(data);
   _syncKV(`stu_syl_${sid}`, v);
-  if (_sbUser && email) _sb.from('student_records').upsert({ id:`syl_${sid}`, student_email: email.trim().toLowerCase(), record_type:'syllabus', data, updated_at: new Date().toISOString() });
+  if (_sbUser && email) {
+    const { error } = await _sb.from('student_records').upsert({ id:`syl_${sid}`, student_email: email.trim().toLowerCase(), record_type:'syllabus', data, updated_at: new Date().toISOString() });
+    if (error) { console.error('[saveStuSyl]', error); showToast('Syllabus sync error: ' + error.message); }
+  }
 }
 
 function getStuEmail(sid) {
