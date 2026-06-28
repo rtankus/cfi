@@ -3220,6 +3220,7 @@ function deleteRecord(e,id) {
   saveHistory(getHistory().filter(r=>r.id!==id));
   renderHistory();
   showToast("Deleted");
+  if (_sbUser) _sb.from('student_records').delete().eq('id', String(id));
 }
 
 /* ══════════════════════════════════════
@@ -3385,30 +3386,8 @@ function importData(input) {
   input.value="";
 }
 
-async function reconcileInvoicesFromStudents() {
-  const students = getStudents().filter(s => s.email);
-  if (!students.length) return 0;
-  const existing = getHistory();
-  const existingIds = new Set(existing.map(r => r.id));
-  const toAdd = [];
-  for (const stu of students) {
-    const email = stu.email.trim().toLowerCase();
-    const { data } = await _sb.from('student_records').select('*').eq('student_email', email).in('record_type', ['invoice', 'session']);
-    if (!data) continue;
-    for (const rec of data) {
-      if (rec.data && rec.data.id != null && !existingIds.has(rec.data.id)) {
-        toAdd.push(rec.data);
-        existingIds.add(rec.data.id);
-      }
-    }
-  }
-  if (toAdd.length) saveHistory([...existing, ...toAdd]);
-  return toAdd.length;
-}
-
 async function forceSyncToCloud() {
   if (!_sbUser) { showToast("Not logged in"); return; }
-  const recovered = await reconcileInvoicesFromStudents();
   const keys = ["raina_data", "raina_students", "raina_syllabi", "raina_resources"];
   const rows = keys
     .filter(k => _cache[k])
@@ -3416,8 +3395,7 @@ async function forceSyncToCloud() {
   if (!rows.length) { showToast("Nothing to sync"); return; }
   const { error } = await _sb.from('kv_store').upsert(rows);
   if (error) { showToast("Sync failed: " + error.message); return; }
-  showToast(recovered > 0 ? `Synced ✓  Recovered ${recovered} missing invoice${recovered !== 1 ? 's' : ''}` : "Synced to cloud ✓");
-  if (recovered > 0) { renderHistory(); renderCFIHome(); }
+  showToast("Synced to cloud ✓");
 }
 
 /* ══════════════════════════════════════
