@@ -195,16 +195,17 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .history-item { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; }
 .history-item:active { background: var(--surface2); }
 .history-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.history-item-info { flex: 1; min-width: 0; }
 .history-item-info .client { font-size: 15px; font-weight: 600; }
 .history-item-info .meta { font-size: 12px; color: var(--text2); margin-top: 3px; }
-.history-item-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.history-item-right { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 55%; }
 .history-item-amount { font-size: 16px; font-weight: 700; color: var(--accent); }
 .history-type-badge { font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
 .badge-invoice { background: var(--accent-dim); color: var(--accent); }
 .badge-debrief { background: var(--blue-dim); color: var(--blue); }
 .badge-session { background: rgba(180,140,255,0.15); color: #b48cff; }
 .badge-pair    { background: rgba(247,180,80,0.15);  color: #f7b450; }
-.history-delete-btn { background: none; border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text3); font-size: 16px; padding: 4px 8px; cursor: pointer; font-family: inherit; }
+.history-delete-btn { background: none; border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text3); font-size: 13px; padding: 4px 8px; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .history-delete-btn:active { color: var(--danger); border-color: var(--danger); }
 .debrief-preview { font-size: 13px; color: var(--text2); margin-top: 8px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .overall-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-top: 5px; }
@@ -423,7 +424,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-pay-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px; }
 .sv-pay-badge.paid { background: var(--accent-dim); color: var(--accent); }
 .sv-pay-badge.unpaid { background: rgba(255,107,107,0.15); color: var(--danger); }
-.mark-paid-btn { font-size: 11px; background: var(--accent-dim); border: 0.5px solid rgba(200,240,160,0.3); border-radius: 10px; padding: 3px 9px; color: var(--accent); cursor: pointer; font-family: inherit; font-weight: 600; }
+.mark-paid-btn { font-size: 11px; background: var(--accent-dim); border: 0.5px solid rgba(200,240,160,0.3); border-radius: 10px; padding: 3px 9px; color: var(--accent); cursor: pointer; font-family: inherit; font-weight: 600; white-space: nowrap; }
 
 /* ── FLIGHT DETAIL SHEET (student view) ── */
 .fd-overlay { display: none; position: fixed; inset: 0; z-index: 10001; background: rgba(0,0,0,0.55); }
@@ -504,6 +505,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       <button class="tab-btn menu-only" onclick="showTab('syllabus')">Syllabus</button>
       <button class="tab-btn menu-only" onclick="showTab('resources')">Resources</button>
       <button class="tab-btn" onclick="showTab('history')">History</button>
+      <button class="tab-btn" onclick="showTab('payments')">My Pay</button>
     </div>
     <button onclick="doSignOut()" style="flex-shrink:0;padding:6px 12px;margin-bottom:10px;background:none;border:0.5px solid var(--border2);border-radius:20px;font-size:12px;color:var(--text3);cursor:pointer;font-family:inherit;white-space:nowrap">Sign out</button>
   </div>
@@ -1611,6 +1613,15 @@ async function svDeleteInvoice(id, invNum) {
   showToast('Invoice deleted');
 }
 
+async function cfiDeleteInvoice(id, invNum) {
+  if (!confirm('Delete invoice #' + (invNum || id) + '?\n\nThis will remove it from the student\'s view.')) return;
+  saveHistory(getHistory().filter(r => r.id !== id));
+  renderHistory();
+  if (_sbUser) await _sb.from('student_records').delete().eq('id', String(id));
+  renderCFIHome();
+  showToast('Invoice deleted');
+}
+
 /* ══════════════════════════════════════
    STUDENT VIEW — 4 TABS
 ══════════════════════════════════════ */
@@ -1748,13 +1759,9 @@ function renderSvHome(records, body) {
         <div style="font-size:16px;font-weight:700;color:var(--danger)">$${totalOutstanding.toFixed(2)}</div>
       </div>
       ${unpaidInvoices.map((inv, idx) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:0.5px solid rgba(255,107,107,0.2);gap:8px">
-          <div onclick="svShowInvoice(window._svUnpaidInvoices[${idx}])" style="font-size:12px;color:var(--text2);cursor:pointer;flex:1">Invoice #${inv.invNum || '—'} · ${inv.invDate ? fmtDateStr(inv.invDate) : '—'}</div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <div style="font-size:12px;font-weight:600;color:var(--danger)">$${(inv.total || 0).toFixed(2)}</div>
-            <button onclick="event.stopPropagation();svMarkInvoicePaid(${inv.id})" style="background:rgba(200,240,160,0.15);border:0.5px solid rgba(200,240,160,0.4);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Mark Paid</button>
-            <button onclick="event.stopPropagation();svDeleteInvoice(${inv.id},'${inv.invNum||''}')" style="background:none;border:none;color:var(--text3);font-size:18px;line-height:1;cursor:pointer;padding:0 2px">×</button>
-          </div>
+        <div onclick="svShowInvoice(window._svUnpaidInvoices[${idx}])" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:0.5px solid rgba(255,107,107,0.2);cursor:pointer">
+          <div style="font-size:12px;color:var(--text2)">Invoice #${inv.invNum || '—'} · ${inv.invDate ? fmtDateStr(inv.invDate) : '—'}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--danger)">$${(inv.total || 0).toFixed(2)} ›</div>
         </div>`).join('')}
     </div>` : '';
 
@@ -2217,12 +2224,32 @@ function renderCFIHome() {
 
   allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
 
+  // Outstanding balance bar
+  const unpaidInvs = getHistory().filter(r => (r.type === 'invoice' || r.type === 'session') && !r.paid);
+  const totalOwed = unpaidInvs.reduce((s, r) => s + (r.total || 0), 0);
+  const balanceHtml = unpaidInvs.length ? `
+    <div style="background:rgba(255,107,107,0.1);border:0.5px solid rgba(255,107,107,0.35);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:0.05em">Outstanding Balance</div>
+        <div style="font-size:16px;font-weight:700;color:var(--danger)">$${totalOwed.toFixed(2)}</div>
+      </div>
+      ${unpaidInvs.sort((a,b)=>(b.invDate||'').localeCompare(a.invDate||'')).map(inv => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:0.5px solid rgba(255,107,107,0.2);gap:8px">
+          <div style="font-size:12px;color:var(--text2);flex:1">${esc(inv.client||inv.student||'—')} · Invoice #${inv.invNum||'—'} · ${inv.invDate?fmtDateStr(inv.invDate):'—'}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="font-size:12px;font-weight:600;color:var(--danger)">$${(inv.total||0).toFixed(2)}</div>
+            <button onclick="markInvoicePaid(${inv.id});renderCFIHome()" style="background:rgba(200,240,160,0.15);border:0.5px solid rgba(200,240,160,0.4);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Mark Paid</button>
+            <button onclick="cfiDeleteInvoice(${inv.id},'${inv.invNum||''}')" style="background:none;border:none;color:var(--text3);font-size:18px;line-height:1;cursor:pointer;padding:0 2px">×</button>
+          </div>
+        </div>`).join('')}
+    </div>` : '';
+
   if (!allItems.length) {
-    body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.<br><br><button onclick="openAddLesson()" style="background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;padding:10px 20px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Add First Lesson</button></div>';
+    body.innerHTML = balanceHtml + '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.<br><br><button onclick="openAddLesson()" style="background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;padding:10px 20px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Add First Lesson</button></div>';
     return;
   }
 
-  let html = '';
+  let html = balanceHtml;
   let lastDate = '';
   allItems.forEach(item => {
     if (item.date !== lastDate) {
