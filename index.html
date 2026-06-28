@@ -793,8 +793,9 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
       </select>
       <input class="al-field" id="alAircraft" type="text" placeholder="N-number (opt.)">
     </div>
-    <div class="al-row">
-      <input class="al-field" id="alTopic" type="text" placeholder="Topic / lesson name">
+    <div class="al-row" style="flex-direction:column;gap:6px">
+      <select class="al-field" id="alTopic" onchange="onAlTopicChange()"><option value="">— select lesson —</option></select>
+      <input class="al-field" id="alTopicCustom" placeholder="Custom lesson name…" style="display:none">
     </div>
     <div class="al-row">
       <textarea class="al-field" id="alNotes" placeholder="Notes for student… (opt.)" style="min-height:64px;resize:none;line-height:1.5"></textarea>
@@ -2196,7 +2197,7 @@ function renderCFIHome() {
       <div style="display:flex;gap:6px;margin-top:8px">
         ${debriefBySchedId[item.id]
           ? `<button onclick="openSchedDebrief(${debriefBySchedId[item.id]})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button>`
-          : `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${item.id}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>`}
+          : `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${item.id}','${esc(item.sylKey||'')}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>`}
         ${invoiceBySchedId[item.id]
           ? `<button onclick="openSchedInvoice(${invoiceBySchedId[item.id]})" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice ✓</button>`
           : `<button onclick="cfiHomeInvoice('${esc(item.studentName||'')}','${item.id}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>`}
@@ -2221,6 +2222,7 @@ function alGetPrepTasks() {
 }
 
 function openAddLesson(prefillStudentName) {
+  buildLessonSelect();
   const students = getStudents();
   const sel = document.getElementById('alStudent');
   sel.innerHTML = students.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
@@ -2233,6 +2235,8 @@ function openAddLesson(prefillStudentName) {
   document.getElementById('alType').value = 'flight';
   document.getElementById('alAircraft').value = '';
   document.getElementById('alTopic').value = '';
+  document.getElementById('alTopicCustom').style.display = 'none';
+  document.getElementById('alTopicCustom').value = '';
   document.getElementById('alNotes').value = '';
   document.getElementById('alPrepTasksList').innerHTML = '';
   document.getElementById('addLessonOverlay').classList.add('open');
@@ -2252,10 +2256,14 @@ async function saveAddLesson() {
   const time    = document.getElementById('alTime').value;
   const type    = document.getElementById('alType').value;
   const aircraft = document.getElementById('alAircraft').value.trim();
-  const topic   = document.getElementById('alTopic').value.trim();
+  const alSelVal = document.getElementById('alTopic').value;
+  const topic   = alSelVal === 'custom' ? document.getElementById('alTopicCustom').value.trim()
+                : alSelVal ? (() => { const o = document.getElementById('alTopic').selectedOptions[0]; return o ? o.textContent.trim() : ''; })()
+                : '';
+  const sylKey  = (alSelVal && alSelVal !== 'custom') ? alSelVal : null;
   const notes   = document.getElementById('alNotes').value.trim();
   const prepTasks = alGetPrepTasks();
-  const newItem = { id: String(Date.now()), date, time, type, aircraft, topic, notes, prepTasks, status: 'scheduled' };
+  const newItem = { id: String(Date.now()), date, time, type, aircraft, topic, sylKey, notes, prepTasks, status: 'scheduled' };
   const data = getStuSched(sid);
   data.items.push(newItem);
   await saveStuSched(sid, data, stu.email);
@@ -2274,14 +2282,14 @@ function openSchedInvoice(recordId) {
   if (inv) loadInvoiceIntoForm(inv);
 }
 
-function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType, itemId) {
+function cfiHomeDebrief(studentName, topic, date, aircraft, sessionType, itemId, sylKey) {
   newDebrief();
   _pendingSchedItemId = itemId || null;
   const stuSel = document.getElementById('dbStudent');
   if (stuSel) stuSel.value = studentName;
   if (aircraft) document.getElementById('dbAircraft').value = aircraft;
   if (date) buildDateSelects('debriefDateSel', date);
-  if (topic) setDbLesson(null, topic);
+  if (topic) setDbLesson(sylKey || null, topic);
   if (sessionType) setSessionType(sessionType);
 }
 
@@ -2428,8 +2436,6 @@ function recalc() {
 
 /* ── Lesson select helpers ── */
 function buildLessonSelect() {
-  const sel = document.getElementById('dbLessonSel');
-  if (!sel) return;
   let html = '<option value="">— none —</option>';
   PPL_SYLLABUS.forEach(stage => {
     html += `<optgroup label="${stage.name}">`;
@@ -2442,7 +2448,22 @@ function buildLessonSelect() {
     html += '</optgroup>';
   });
   html += '<option value="custom">Custom…</option>';
-  sel.innerHTML = html;
+  const dbSel = document.getElementById('dbLessonSel');
+  if (dbSel) dbSel.innerHTML = html;
+  const alSel = document.getElementById('alTopic');
+  if (alSel) alSel.innerHTML = html.replace('— none —', '— select lesson —');
+}
+
+function onAlTopicChange() {
+  const val = document.getElementById('alTopic').value;
+  const customInput = document.getElementById('alTopicCustom');
+  customInput.style.display = val === 'custom' ? '' : 'none';
+  // Auto-set lesson type to match flight/ground
+  if (val && val !== 'custom') {
+    const type = val.split(':')[1];
+    const typeSel = document.getElementById('alType');
+    if (typeSel) typeSel.value = type === 'g' ? 'ground' : 'flight';
+  }
 }
 
 function onDbLessonChange() {
