@@ -603,8 +603,8 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   <div class="page-header">
     <span class="page-title" id="debriefPageTitle">Flight Debrief</span>
     <div style="display:flex;gap:6px">
-      <button class="ghost-btn" onclick="saveAndShareDebrief()">Share</button>
-      <button class="blue-btn" id="debriefSaveBtn" onclick="saveDebrief()">Save</button>
+      <button class="ghost-btn" onclick="saveAndShareDebrief(true)">Share</button>
+      <button class="blue-btn" id="debriefSaveBtn" onclick="saveAndShareDebrief()">Save & PDF</button>
     </div>
   </div>
 
@@ -1999,24 +1999,25 @@ function renderCFIHome() {
   const students = getStudents();
   const today = new Date().toISOString().slice(0,10);
 
-  const allItems = [];
-  students.forEach(stu => {
-    const sched = getStuSched(stu.id);
-    (sched.items || []).forEach(item => {
-      if (item.status === 'scheduled' && item.date >= today) {
-        allItems.push({ ...item, studentName: stu.name });
-      }
-    });
-  });
-
-  allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
-
   const debriefBySchedId = {}, invoiceBySchedId = {};
   getHistory().forEach(r => {
     if (!r.schedItemId) return;
     if (r.type === 'debrief') debriefBySchedId[r.schedItemId] = r.id;
     else if (r.type === 'invoice') invoiceBySchedId[r.schedItemId] = r.id;
   });
+
+  const allItems = [];
+  students.forEach(stu => {
+    const sched = getStuSched(stu.id);
+    (sched.items || []).forEach(item => {
+      const complete = debriefBySchedId[item.id] && invoiceBySchedId[item.id];
+      if (item.status === 'scheduled' && item.date >= today && !complete) {
+        allItems.push({ ...item, studentName: stu.name });
+      }
+    });
+  });
+
+  allItems.sort((a, b) => (a.date + (a.time||'') ).localeCompare(b.date + (b.time||'')));
 
   if (!allItems.length) {
     body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3);font-size:15px">No upcoming lessons scheduled.<br><br><button onclick="openAddLesson()" style="background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;padding:10px 20px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Add First Lesson</button></div>';
@@ -2388,7 +2389,7 @@ function saveDebrief() {
     if (idx !== -1) history[idx] = db; else history.push(db);
     editingDebriefId = null;
     document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
-    document.getElementById("debriefSaveBtn").textContent = "Save";
+    document.getElementById("debriefSaveBtn").textContent = "Save & PDF";
     showToast("Debrief updated ✓");
   } else {
     history.push(db);
@@ -2439,7 +2440,7 @@ function newDebrief() {
   setSessionType("");
   buildDateSelects("debriefDateSel", todayStr());
   document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
-  document.getElementById("debriefSaveBtn").textContent = "Save";
+  document.getElementById("debriefSaveBtn").textContent = "Save & PDF";
   showTab("debrief");
 }
 
@@ -3046,23 +3047,29 @@ function showToast(msg) {
 /* ══════════════════════════════════════
    DEBRIEF PDF / SHARE
 ══════════════════════════════════════ */
-function saveAndShareDebrief() {
+function saveAndShareDebrief(share = false) {
   const db = collectDebrief();
   if (!db.student && !db.wentWell && !db.needsWork && !db.notes && !db.nextTime) { showToast("Add some content first"); return; }
   const history = getHistory();
+  const isNew = !editingDebriefId;
   if (editingDebriefId) {
     const idx = history.findIndex(r => r.id === editingDebriefId);
     if (idx !== -1) history[idx] = db; else history.push(db);
     editingDebriefId = null;
     document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
-    document.getElementById("debriefSaveBtn").textContent = "Save";
+    document.getElementById("debriefSaveBtn").textContent = "Save & PDF";
   } else {
     history.push(db);
   }
   saveHistory(history);
   _pushStudentRecord(db);
+  if (isNew && db.student) {
+    const stu = getStudents().find(s => s.name === db.student);
+    if (stu?.email) notifyStudent(stu.email, 'debrief', db);
+  }
+  if (isNew) newDebrief();
   showToast("Saved ✓  Generating PDF…");
-  setTimeout(() => generateDebriefPDF(db), 300);
+  setTimeout(() => generateDebriefPDF(db, share ? 'share' : 'download'), 300);
 }
 
 async function generateDebriefPDF(db, mode = 'share') {
@@ -3143,6 +3150,13 @@ async function generateDebriefPDF(db, mode = 'share') {
     return;
   }
   const blob = doc.output("blob");
+  if (mode === 'download') {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=fileName; a.click();
+    URL.revokeObjectURL(url);
+    showToast("PDF saved ✓");
+    return;
+  }
   const file = new File([blob], fileName, { type:"application/pdf" });
   if (navigator.share && navigator.canShare && navigator.canShare({ files:[file] })) {
     await navigator.share({ files:[file], title: `Debrief — ${db.student||""}` });
