@@ -1026,6 +1026,32 @@ async function _pushStudentRecord(record) {
 }
 
 /* ── Sync all existing history records for a student ── */
+function _safeRow(id, email, record_type, data) {
+  try {
+    const clean = JSON.parse(JSON.stringify(data));
+    return { id, student_email: email, record_type, data: clean, updated_at: new Date().toISOString() };
+  } catch(e) {
+    console.warn('[sync] skipping unserialisable record', id, e);
+    return null;
+  }
+}
+
+async function _upsertInBatches(rows) {
+  let skipped = 0;
+  for (let i = 0; i < rows.length; i += 10) {
+    const batch = rows.slice(i, i + 10);
+    const { error } = await _sb.from('student_records').upsert(batch);
+    if (error) {
+      // retry one-by-one to find the bad record
+      for (const row of batch) {
+        const { error: e2 } = await _sb.from('student_records').upsert([row]);
+        if (e2) { console.warn('[sync] skipping bad record', row.id, e2.message); skipped++; }
+      }
+    }
+  }
+  return skipped;
+}
+
 async function syncPastSessions(sid) {
   if (!_sbUser) { showToast('Not logged in'); return; }
   const stu = getStudents().find(s => s.id === sid);
@@ -1037,31 +1063,22 @@ async function syncPastSessions(sid) {
     r.client === stu.name ||
     (stu.billingName && r.client === stu.billingName)
   );
-  const rows = matching.map(r => ({
-    id: String(r.id),
-    student_email: email,
-    record_type: r.type || 'invoice',
-    data: r,
-    updated_at: new Date().toISOString()
-  }));
+  const rows = matching.map(r => _safeRow(String(r.id), email, r.type || 'invoice', r)).filter(Boolean);
 
-  // Also push syllabus/progress data
   const sylData = getStuSyl(sid);
   if (Object.keys(sylData).length) {
-    rows.push({ id: `syl_${sid}`, student_email: email, record_type: 'syllabus', data: sylData, updated_at: new Date().toISOString() });
+    const row = _safeRow(`syl_${sid}`, email, 'syllabus', sylData);
+    if (row) rows.push(row);
   }
-
-  // Also push schedule and checklist (always push to overwrite stale student data)
-  const schedData = getStuSched(sid);
-  rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
-  const checkData = getStuCheck(sid);
-  rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
+  const schedRow = _safeRow(`sched_${sid}`, email, 'schedule', getStuSched(sid));
+  if (schedRow) rows.push(schedRow);
+  const checkRow = _safeRow(`check_${sid}`, email, 'checklist', getStuCheck(sid));
+  if (checkRow) rows.push(checkRow);
 
   if (!rows.length) { showToast('Nothing to sync'); return; }
   showToast(`Syncing ${rows.length} records…`);
-  const { error } = await _sb.from('student_records').upsert(rows);
-  if (error) { showToast('Sync failed: ' + error.message); return; }
-  showToast(`Synced ✓`);
+  const skipped = await _upsertInBatches(rows);
+  showToast(skipped ? `Synced ✓ (${skipped} bad record${skipped>1?'s':''} skipped)` : `Synced ✓`);
 }
 
 async function clearAndResync(sid) {
@@ -1075,35 +1092,28 @@ async function clearAndResync(sid) {
   const { error: delErr } = await _sb.from('student_records').delete().eq('student_email', email);
   if (delErr) { showToast('Clear failed: ' + delErr.message); return; }
 
-  // Re-build rows from local state
   const history = getHistory();
   const matching = history.filter(r =>
     r.student === stu.name ||
     r.client === stu.name ||
     (stu.billingName && r.client === stu.billingName)
   );
-  const rows = matching.map(r => ({
-    id: String(r.id),
-    student_email: email,
-    record_type: r.type || 'invoice',
-    data: r,
-    updated_at: new Date().toISOString()
-  }));
+  const rows = matching.map(r => _safeRow(String(r.id), email, r.type || 'invoice', r)).filter(Boolean);
 
   const sylData = getStuSyl(sid);
   if (Object.keys(sylData).length) {
-    rows.push({ id: `syl_${sid}`, student_email: email, record_type: 'syllabus', data: sylData, updated_at: new Date().toISOString() });
+    const row = _safeRow(`syl_${sid}`, email, 'syllabus', sylData);
+    if (row) rows.push(row);
   }
-  const schedData = getStuSched(sid);
-  rows.push({ id: `sched_${sid}`, student_email: email, record_type: 'schedule', data: schedData, updated_at: new Date().toISOString() });
-  const checkData = getStuCheck(sid);
-  rows.push({ id: `check_${sid}`, student_email: email, record_type: 'checklist', data: checkData, updated_at: new Date().toISOString() });
+  const schedRow = _safeRow(`sched_${sid}`, email, 'schedule', getStuSched(sid));
+  if (schedRow) rows.push(schedRow);
+  const checkRow = _safeRow(`check_${sid}`, email, 'checklist', getStuCheck(sid));
+  if (checkRow) rows.push(checkRow);
 
   if (!rows.length) { showToast('Cleared (nothing to re-upload)'); return; }
   showToast(`Re-uploading ${rows.length} records…`);
-  const { error } = await _sb.from('student_records').upsert(rows);
-  if (error) { showToast('Re-upload failed: ' + error.message); return; }
-  showToast(`Done — ${rows.length} records synced ✓`);
+  const skipped = await _upsertInBatches(rows);
+  showToast(skipped ? `Done — ${skipped} bad record${skipped>1?'s':''} skipped` : `Done — ${rows.length} records synced ✓`);
 }
 
 function _syncKV(key, value) {
