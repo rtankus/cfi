@@ -307,7 +307,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-body { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 .sv-signout { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 6px 12px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
 .sv-theme-btn { background: none; border: 0.5px solid var(--border2); border-radius: 20px; padding: 5px 9px; font-size: 14px; cursor: pointer; line-height: 1; }
-#studentScreen.light { --bg: #f0f0f0; --surface: #ffffff; --surface2: #f5f5f5; --surface3: #e8e8e8; --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18); --text: #1a1a1a; --text2: #555; --text3: #666; --accent: #3a7d1a; --accent-dim: rgba(58,125,26,0.1); --accent-text: #ffffff; --blue: #1a65c0; --blue-dim: rgba(26,101,192,0.1); --amber: #9a5f00; --amber-dim: rgba(154,95,0,0.1); --danger: #c0392b; }
+#studentScreen.light { color: var(--text); --bg: #f0f0f0; --surface: #ffffff; --surface2: #f5f5f5; --surface3: #e8e8e8; --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18); --text: #1a1a1a; --text2: #555; --text3: #666; --accent: #3a7d1a; --accent-dim: rgba(58,125,26,0.1); --accent-text: #ffffff; --blue: #1a65c0; --blue-dim: rgba(26,101,192,0.1); --amber: #9a5f00; --amber-dim: rgba(154,95,0,0.1); --danger: #c0392b; }
 #studentScreen.light .sv-header { background: rgba(240,240,240,0.95); }
 #studentScreen.light input, #studentScreen.light select, #studentScreen.light textarea { color: var(--text); background: var(--surface); }
 #studentScreen.light .page-indicator { background: rgba(0,0,0,0.1); color: var(--text2); }
@@ -1499,11 +1499,11 @@ function renderStuLog(sid) {
   if (!stu) return;
   const el = document.getElementById(`stu-log-content-${sid}`);
   const debriefs = getHistory()
-    .filter(r => r.type === 'debrief' && r.student === stu.name)
+    .filter(r => (r.type === 'debrief' || r.type === 'session') && (r.student === stu.name || r.client === stu.name))
     .sort((a,b) => (b.date||'').localeCompare(a.date||''));
   if (!debriefs.length) { el.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--text3)">No flight log entries yet.</div>'; return; }
   const invoiceBySchedId = {};
-  getHistory().forEach(r => { if (r.schedItemId && (!r.type || r.type === 'invoice')) invoiceBySchedId[r.schedItemId] = r.id; });
+  getHistory().forEach(r => { if (r.schedItemId && (!r.type || r.type === 'invoice' || r.type === 'session')) invoiceBySchedId[r.schedItemId] = r.id; });
   const totals = { total:0, solo:0, xc:0, night:0, inst:0 };
   const rows = debriefs.map(db => {
     const hrs  = parseFloat(db.hours) || 0;
@@ -1516,7 +1516,8 @@ function renderStuLog(sid) {
     const v = n => n ? n.toFixed(1) : '<span style="color:var(--text3)">—</span>';
     const linkedInvoiceId = db.schedItemId ? invoiceBySchedId[db.schedItemId] : null;
     const btnStyle = (bg, border, color) => `style="padding:3px 8px;background:${bg};border:0.5px solid ${border};border-radius:10px;font-size:10px;font-weight:600;color:${color};font-family:inherit;cursor:pointer"`;
-    const debriefBtn = `<button onclick="openSchedDebrief(${db.id})" ${btnStyle('var(--blue-dim)','rgba(126,184,247,0.5)','var(--blue)')}>Debrief</button>`;
+    const debriefLabel = db.type === 'session' ? 'Session' : 'Debrief';
+    const debriefBtn = `<button onclick="openSchedSession(${db.id})" ${btnStyle(db.type==='session'?'rgba(180,140,255,0.15)':'var(--blue-dim)',db.type==='session'?'rgba(180,140,255,0.4)':'rgba(126,184,247,0.5)',db.type==='session'?'#b48cff':'var(--blue)')}>${debriefLabel}</button>`;
     const invoiceBtn = linkedInvoiceId ? `<button onclick="openSchedInvoice(${linkedInvoiceId})" ${btnStyle('var(--accent-dim)','rgba(200,240,160,0.5)','var(--accent)')}>Invoice</button>` : '';
     return `<div class="sv-log-row">
       <div>
@@ -1553,8 +1554,8 @@ function renderStuPayments(sid) {
   if (!stu) return;
   const el = document.getElementById(`stu-payments-content-${sid}`);
   const invoices = getHistory()
-    .filter(r => !r.type || r.type === 'invoice')
-    .filter(r => r.client === stu.name || (stu.billingName && r.client === stu.billingName))
+    .filter(r => !r.type || r.type === 'invoice' || r.type === 'session')
+    .filter(r => r.client === stu.name || r.student === stu.name || (stu.billingName && r.client === stu.billingName))
     .sort((a,b) => (b.invDate||b.savedAt||'').localeCompare(a.invDate||a.savedAt||''));
   if (!invoices.length) { el.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--text3)">No invoices yet.</div>'; return; }
   el.innerHTML = invoices.map(inv => `
@@ -1677,6 +1678,10 @@ function renderSvHome(records, body) {
   records.forEach(r => {
     if (r.record_type === 'debrief' && r.data?.schedItemId) debriefBySched[r.data.schedItemId] = r.data;
     if (r.record_type === 'invoice' && r.data?.schedItemId) invoiceBySched[r.data.schedItemId] = r.data;
+    if (r.record_type === 'session' && r.data?.schedItemId) {
+      debriefBySched[r.data.schedItemId] = r.data;
+      invoiceBySched[r.data.schedItemId] = r.data;
+    }
   });
 
   const upcoming  = (schedRec?.data?.items || [])
@@ -1700,7 +1705,7 @@ function renderSvHome(records, body) {
   window._svCompletedSessions = completedSessions;
 
   // Outstanding unpaid invoices
-  const unpaidInvoices = records.filter(r => r.record_type === 'invoice' && !r.data?.paid)
+  const unpaidInvoices = records.filter(r => (r.record_type === 'invoice' || r.record_type === 'session') && !r.data?.paid)
     .map(r => r.data).sort((a, b) => (b.invDate || '').localeCompare(a.invDate || ''));
   const totalOutstanding = unpaidInvoices.reduce((s, inv) => s + (inv.total || 0), 0);
   window._svUnpaidInvoices = unpaidInvoices;
@@ -2137,8 +2142,9 @@ function showTab(tab) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".menu-item").forEach(b => b.classList.remove("active"));
-  document.getElementById("page-" + tab).classList.add("active");
-  const map = { home:"Home", invoice:"Invoice", debrief:"Debrief", students:"Students", syllabus:"Syllabus", resources:"Resources", history:"History", payments:"My Pay" };
+  const pageEl = document.getElementById("page-" + tab);
+  if (pageEl) pageEl.classList.add("active");
+  const map = { home:"Home", session:"Session", students:"Students", syllabus:"Syllabus", resources:"Resources", history:"History", payments:"My Pay" };
   document.querySelectorAll(".tab-btn").forEach(b => {
     if (b.textContent.trim() === map[tab]) b.classList.add("active");
   });
@@ -2163,10 +2169,11 @@ function renderCFIHome() {
   const students = getStudents();
   const today = new Date().toISOString().slice(0,10);
 
-  const debriefBySchedId = {}, invoiceBySchedId = {};
+  const debriefBySchedId = {}, invoiceBySchedId = {}, sessionBySchedId = {};
   getHistory().forEach(r => {
     if (!r.schedItemId) return;
-    if (r.type === 'debrief') debriefBySchedId[r.schedItemId] = r.id;
+    if (r.type === 'session') sessionBySchedId[r.schedItemId] = r.id;
+    else if (r.type === 'debrief') debriefBySchedId[r.schedItemId] = r.id;
     else if (r.type === 'invoice') invoiceBySchedId[r.schedItemId] = r.id;
   });
 
@@ -2174,7 +2181,7 @@ function renderCFIHome() {
   students.forEach(stu => {
     const sched = getStuSched(stu.id);
     (sched.items || []).forEach(item => {
-      const complete = debriefBySchedId[item.id] && invoiceBySchedId[item.id];
+      const complete = sessionBySchedId[item.id] || (debriefBySchedId[item.id] && invoiceBySchedId[item.id]);
       if (item.status === 'scheduled' && item.date >= today && !complete) {
         allItems.push({ ...item, studentName: stu.name });
       }
@@ -2201,7 +2208,22 @@ function renderCFIHome() {
     const isGround = item.type === 'ground';
     const typeColor = isGround ? 'var(--amber)' : 'var(--blue)';
     const typeLabel = isGround ? '📚 Ground' : '✈ Flight';
-    const itemJson = JSON.stringify(item).replace(/'/g,"\\'");
+    const sid = item.id;
+    const hasSession = !!sessionBySchedId[sid];
+    const hasDebrief = !!debriefBySchedId[sid];
+    const hasInvoice = !!invoiceBySchedId[sid];
+    let actionBtns;
+    if (hasSession) {
+      actionBtns = `<button onclick="openSchedSession(${sessionBySchedId[sid]})" style="flex:1;padding:7px 10px;background:rgba(180,140,255,0.15);border:0.5px solid rgba(180,140,255,0.4);border-radius:20px;font-size:12px;font-weight:600;color:#b48cff;font-family:inherit;cursor:pointer">Session ✓</button>`;
+    } else if (hasDebrief && hasInvoice) {
+      actionBtns = `<button onclick="openSchedDebrief(${debriefBySchedId[sid]})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button><button onclick="openSchedInvoice(${invoiceBySchedId[sid]})" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice ✓</button>`;
+    } else {
+      const oldBtns = [
+        hasDebrief ? `<button onclick="openSchedDebrief(${debriefBySchedId[sid]})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button>` : '',
+        `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${sid}','${esc(item.sylKey||'')}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Session</button>`,
+      ].join('');
+      actionBtns = oldBtns;
+    }
     html += `<div style="padding:12px 14px">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="flex:1;min-width:0">
@@ -2213,12 +2235,7 @@ function renderCFIHome() {
         </div>
       </div>
       <div style="display:flex;gap:6px;margin-top:8px">
-        ${debriefBySchedId[item.id]
-          ? `<button onclick="openSchedDebrief(${debriefBySchedId[item.id]})" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief ✓</button>`
-          : `<button onclick="cfiHomeDebrief('${esc(item.studentName||'')}','${esc(item.topic||'')}','${item.date||''}','${esc(item.aircraft||'')}','${isGround?'gnd':'flt'}','${item.id}','${esc(item.sylKey||'')}')" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Debrief</button>`}
-        ${invoiceBySchedId[item.id]
-          ? `<button onclick="openSchedInvoice(${invoiceBySchedId[item.id]})" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice ✓</button>`
-          : `<button onclick="cfiHomeInvoice('${esc(item.studentName||'')}','${item.id}','${item.date||''}')" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">+ Invoice</button>`}
+        ${actionBtns}
         <button onclick="openAddLesson('${esc(item.studentName||'')}')" style="padding:7px 10px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;color:var(--text2);font-family:inherit;cursor:pointer">+ Lesson</button>
       </div>
     </div>`;
@@ -2579,7 +2596,7 @@ function autoCheckSyllabus(db) {
 function syncAllDebriefSyllabus() {
   const students = getStudents();
   const byStu = {};
-  getHistory().filter(r => r.type === 'debrief').forEach(db => {
+  getHistory().filter(r => r.type === 'debrief' || r.type === 'session').forEach(db => {
     const sylKey = db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType);
     if (!sylKey || !db.student) return;
     const parts = sylKey.split(':');
@@ -2921,6 +2938,7 @@ function setFilter(f) {
   renderHistory();
 }
 
+
 function setHistoryStudentFilter(v) {
   historyStudentFilter = v;
   renderHistory();
@@ -2938,7 +2956,12 @@ function populateHistoryStudentFilter() {
 function renderHistory() {
   populateHistoryStudentFilter();
   const all = getHistory().sort((a,b)=>b.id-a.id);
-  let filtered = historyFilter==="all" ? all : all.filter(r=>r.type===historyFilter||(historyFilter==="invoice"&&!r.type));
+  let filtered;
+  if (historyFilter === "all")     filtered = all;
+  else if (historyFilter === "session") filtered = all.filter(r => r.type === "session");
+  else if (historyFilter === "invoice") filtered = all.filter(r => !r.type || r.type === "invoice");
+  else if (historyFilter === "debrief") filtered = all.filter(r => r.type === "debrief");
+  else filtered = all;
   if (historyStudentFilter) {
     const stuObj = getStudents().find(s => s.name === historyStudentFilter);
     filtered = filtered.filter(r =>
@@ -2949,14 +2972,37 @@ function renderHistory() {
   }
   const el = document.getElementById("historyList");
   if (!filtered.length) {
-    el.innerHTML=`<div class="history-empty"><div class="icon">${historyFilter==="debrief"?"📋":"🗂️"}</div><p>No ${historyFilter==="all"?"records":historyFilter+"s"} yet.</p></div>`;
+    const icon = historyFilter==="debrief" ? "📋" : historyFilter==="session" ? "📝" : "🗂️";
+    el.innerHTML=`<div class="history-empty"><div class="icon">${icon}</div><p>No ${historyFilter==="all"?"records":historyFilter+"s"} yet.</p></div>`;
     return;
   }
   el.innerHTML = filtered.map(inv => {
-    const isDebrief = inv.type==="debrief";
-    const badge = `<span class="history-type-badge ${isDebrief?"badge-debrief":"badge-invoice"}">${isDebrief?"Debrief":"Invoice"}</span>`;
+    const isSession = inv.type === "session";
+    const isDebrief = inv.type === "debrief";
     const safeInv = JSON.stringify(inv).replace(/"/g,'&quot;');
-    if (isDebrief) {
+    if (isSession) {
+      const ratingPill = inv.rating ? `<span class="overall-pill ${inv.rating==="good"?"pill-good":inv.rating==="ok"?"pill-ok":"pill-rough"}">${inv.rating==="good"?"Great session":inv.rating==="ok"?"Solid":"Tough day"}</span>` : "";
+      const preview = [inv.wentWell,inv.needsWork].filter(Boolean).join(" · ").slice(0,100);
+      return `<div class="history-item" onclick="loadSessionIntoForm(JSON.parse(this.dataset.inv))" data-inv="${safeInv}">
+        <div class="history-item-top">
+          <div class="history-item-info">
+            <div class="client">${inv.student||"No student"}</div>
+            <div class="meta">${fmtDate(inv.date)||"No date"}${inv.airport?" · "+inv.airport:""}${inv.hours?" · "+inv.hours+" hrs":""}${inv.sessionType?" · "+(inv.sessionType==="flt"?"✈ Flt":"📖 Gnd"):""}</div>
+            ${ratingPill}
+          </div>
+          <div class="history-item-right">
+            <span class="history-type-badge badge-session">Session</span>
+            <span class="history-item-amount">$${(inv.total||0).toFixed(2)}</span>
+            <button class="mark-paid-btn${inv.paid?' paid-active':''}" style="${inv.paid?'background:var(--accent-dim);border-color:rgba(200,240,160,0.3);color:var(--accent)':''}" onclick="event.stopPropagation();markInvoicePaid(${inv.id})">${inv.paid?'Paid ✓':'Mark Paid'}</button>
+            <button class="history-delete-btn" onclick="event.stopPropagation();generateDebriefPDF(JSON.parse(this.closest('[data-inv]').dataset.inv),'view')" title="Debrief PDF">Debrief</button>
+            <button class="history-delete-btn" onclick="event.stopPropagation();(function(d){generatePDF({...d,notes:d.invoiceNotes||''},'view')})(JSON.parse(this.closest('[data-inv]').dataset.inv))" title="Invoice PDF">Invoice</button>
+            <button class="history-delete-btn" onclick="deleteRecord(event,${inv.id})">🗑</button>
+          </div>
+        </div>
+        ${preview?`<div class="debrief-preview">${preview}</div>`:""}
+      </div>`;
+    } else if (isDebrief) {
+      const badge = `<span class="history-type-badge badge-debrief">Debrief</span>`;
       const ratingPill = inv.rating ? `<span class="overall-pill ${inv.rating==="good"?"pill-good":inv.rating==="ok"?"pill-ok":"pill-rough"}">${inv.rating==="good"?"Great session":inv.rating==="ok"?"Solid":"Tough day"}</span>` : "";
       const preview = [inv.wentWell,inv.needsWork].filter(Boolean).join(" · ").slice(0,100);
       return `<div class="history-item" onclick="loadDebriefIntoForm(JSON.parse(this.dataset.inv))" data-inv="${safeInv}">
@@ -2971,6 +3017,7 @@ function renderHistory() {
         ${preview?`<div class="debrief-preview">${preview}</div>`:""}
       </div>`;
     } else {
+      const badge = `<span class="history-type-badge badge-invoice">Invoice</span>`;
       return `<div class="history-item" onclick="loadInvoiceIntoForm(JSON.parse(this.dataset.inv))" data-inv="${safeInv}">
         <div class="history-item-top">
           <div class="history-item-info">
@@ -3019,7 +3066,7 @@ function renderPayments() {
   const thisYear  = today.getFullYear();
   const thisMonth = today.getMonth();
 
-  const invoices = getHistory().filter(r => !r.type || r.type === "invoice");
+  const invoices = getHistory().filter(r => !r.type || r.type === "invoice" || r.type === "session");
 
   function inPeriod(inv) {
     if (period === "all") return true;
@@ -3616,8 +3663,8 @@ function deleteStudent(id) {
 
 function viewStudentDebriefs(name) {
   showTab("history");
-  setFilter("debrief");
-  showToast("Showing debriefs for " + name);
+  setFilter("all");
+  showToast("Showing records for " + name);
 }
 
 function startInvoiceForStudent(name) {
@@ -3626,8 +3673,8 @@ function startInvoiceForStudent(name) {
 }
 
 function startDebriefForStudent(name) {
-  newDebrief();
-  document.getElementById("dbStudent").value = name;
+  newSession();
+  document.getElementById("clientName").value = name;
 }
 
 /* ══════════════════════════════════════
@@ -4241,12 +4288,11 @@ function initApp() {
 
   initScrollableTextareas();
   buildDateSelects("invoiceDateSel", todayStr());
-  buildDateSelects("debriefDateSel", todayStr());
   renderFlights();
   renderLineItems();
   buildLessonSelect();
   populateStudentSelects();
-  const validTabs = new Set(['home','invoice','debrief','students','syllabus','resources','history','payments']);
+  const validTabs = new Set(['home','session','students','syllabus','resources','history','payments']);
   const hash = location.hash.replace('#', '');
   showTab(validTabs.has(hash) ? hash : 'home');
   window.addEventListener('hashchange', () => {
@@ -4264,8 +4310,6 @@ function populateStudentSelects() {
     ...students.map(s => s.billingName).filter(Boolean)
   ])];
   const opts = names => ['', ...names].map(n => `<option value="${esc(n)}">${n || '— select —'}</option>`).join('');
-  const s1 = document.getElementById('dbStudent');
-  if (s1) { const cur = s1.value; s1.innerHTML = opts(studentNames); s1.value = cur; }
   const s2 = document.getElementById('clientName');
   if (s2) { const cur = s2.value; s2.innerHTML = opts(clientNames); s2.value = cur; }
   populateHistoryStudentFilter();
