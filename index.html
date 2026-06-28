@@ -2664,8 +2664,8 @@ function saveDebrief() {
     const idx = history.findIndex(r => r.id === editingDebriefId);
     if (idx !== -1) history[idx] = db; else history.push(db);
     editingDebriefId = null;
-    document.getElementById("debriefPageTitle").textContent = "Flight Debrief";
-    document.getElementById("debriefSaveBtn").textContent = "Save & PDF";
+    document.getElementById("sessionPageTitle").textContent = "New Session";
+    document.getElementById("sessionSaveBtn").textContent = "Save & PDFs";
     showToast("Debrief updated ✓");
   } else {
     history.push(db);
