@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import nodemailer from "npm:nodemailer@6";
 
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 const BREVO_SMTP_KEY = Deno.env.get("BREVO_SMTP_KEY")!;
 const FROM_EMAIL = "tankusraina@gmail.com";
 const FROM_NAME = "Raina CFI";
@@ -36,16 +41,20 @@ interface DirectPayload {
 }
 
 serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: CORS });
+  }
+
   const payload = await req.json();
 
   // Direct invocation from client (schedule / checklist notifications)
   if (payload.direct) {
     const { record_type, student_email, data } = payload as DirectPayload;
     if (!record_type || !student_email || student_email === "shared") {
-      return new Response("ok", { status: 200 });
+      return new Response("ok", { headers: CORS });
     }
     const built = buildEmail(record_type, data);
-    if (!built) return new Response("ok", { status: 200 });
+    if (!built) return new Response("ok", { headers: CORS });
     const info = await transporter.sendMail({
       from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
       to: student_email,
@@ -55,12 +64,12 @@ serve(async (req: Request) => {
     console.log("Email sent (direct):", info.messageId);
     return new Response(JSON.stringify({ ok: true, messageId: info.messageId }), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...CORS, "Content-Type": "application/json" },
     });
   }
 
   // Webhook path — emails are now sent via direct client invocation above; skip here.
-  return new Response("ok", { status: 200 });
+  return new Response("ok", { headers: CORS });
 });
 
 function buildEmail(
@@ -168,11 +177,12 @@ function buildEmail(
 
   if (type === "checklist") {
     const text = data.text ? String(data.text) : "New task";
+    const isFlightTask = data.listType === "flight";
     return {
-      subject: "New task from your instructor",
+      subject: isFlightTask ? "New prep task for your next lesson" : "New task from your instructor",
       html: layout(`
-        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">New Assignment</h2>
-        <p style="margin:0 0 20px;color:#555">Your instructor has added a new task for you to complete before your next lesson.</p>
+        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">${isFlightTask ? "Prep for Next Lesson" : "New Assignment"}</h2>
+        <p style="margin:0 0 20px;color:#555">${isFlightTask ? "Your instructor added a task to complete before your next lesson." : "Your instructor has added a new task for you."}</p>
         ${section("Task", text, "#3b82f6")}
       `),
     };

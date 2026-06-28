@@ -1359,32 +1359,40 @@ function removeSchedItem(sid, itemId) {
 /* ── Checklist ── */
 function renderStuCheck(sid) {
   const data = getStuCheck(sid);
-  const el = document.getElementById(`stu-check-list-${sid}`);
-  if (!data.items.length) { el.innerHTML = '<div style="padding:12px 14px;font-size:13px;color:var(--text3)">No items yet — add tasks below.</div>'; return; }
-  el.innerHTML = data.items.map(item => {
-    const done = item.done || false;
-    const badge = done ? '<span class="check-item-done-badge">✓ Done</span>' : '';
-    return `<div class="check-item${done?' done':''}">
-      <input type="checkbox" ${done?'checked':''} onchange="toggleCheckItemDone(${sid},'${item.id}',this.checked)">
-      <input type="text" value="${esc(item.text||'')}" placeholder="Assignment or task…" onchange="updateCheckItem(${sid},'${item.id}',this.value)">
-      ${badge}
-      <button class="remove-btn" onclick="removeCheckItem(${sid},'${item.id}')">×</button>
-    </div>`;
-  }).join('');
+  const flightEl  = document.getElementById(`stu-check-list-flight-${sid}`);
+  const generalEl = document.getElementById(`stu-check-list-general-${sid}`);
+  if (!flightEl || !generalEl) return;
+
+  const renderItems = (items, el, emptyMsg) => {
+    if (!items.length) { el.innerHTML = `<div style="padding:4px 14px 8px;font-size:13px;color:var(--text3)">${emptyMsg}</div>`; return; }
+    el.innerHTML = items.map(item => {
+      const done = item.done || false;
+      const badge = done ? '<span class="check-item-done-badge">✓ Done</span>' : '';
+      return `<div class="check-item${done?' done':''}">
+        <input type="checkbox" ${done?'checked':''} onchange="toggleCheckItemDone(${sid},'${item.id}',this.checked)">
+        <input type="text" value="${esc(item.text||'')}" placeholder="Task…" onchange="updateCheckItem(${sid},'${item.id}',this.value)">
+        ${badge}
+        <button class="remove-btn" onclick="removeCheckItem(${sid},'${item.id}')">×</button>
+      </div>`;
+    }).join('');
+  };
+
+  renderItems(data.items.filter(i => i.listType === 'flight'),                    flightEl,  'No prep tasks yet.');
+  renderItems(data.items.filter(i => !i.listType || i.listType === 'general'),    generalEl, 'No general tasks yet.');
 }
-async function submitChecklistItems(sid) {
+async function submitChecklistItems(sid, listType = 'general') {
   const email = getStuEmail(sid);
-  const textarea = document.getElementById(`stu-check-input-${sid}`);
+  const textarea = document.getElementById(`stu-check-input-${listType}-${sid}`);
   const lines = (textarea.value || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) { showToast('Type at least one task'); return; }
   const data = getStuCheck(sid);
   const now = Date.now();
-  lines.forEach((text, i) => data.items.push({ id: String(now + i), text, done: false }));
+  lines.forEach((text, i) => data.items.push({ id: String(now + i), text, done: false, listType }));
   await saveStuCheck(sid, data, email);
   textarea.value = '';
   renderStuCheck(sid);
   showToast(`${lines.length} task${lines.length > 1 ? 's' : ''} added ✓`);
-  if (email) lines.forEach(text => notifyStudent(email, 'checklist', { text }));
+  if (email) lines.forEach(text => notifyStudent(email, 'checklist', { text, listType }));
 }
 function updateCheckItem(sid, itemId, val) {
   const data = getStuCheck(sid);
@@ -1599,11 +1607,21 @@ function renderSvHome(records, body) {
     .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
   const nextFlight = upcoming[0];
   const _svDoneMap = _getSvDoneMap();
-  const checkItems = (checkRec?.data?.items || []).map(i => ({
+  const allCheckItems = (checkRec?.data?.items || []).map(i => ({
     ...i, done: _svDoneMap.hasOwnProperty(i.id) ? _svDoneMap[i.id] : (i.done || false)
   }));
+  const flightTasks  = allCheckItems.filter(i => i.listType === 'flight');
+  const generalTasks = allCheckItems.filter(i => !i.listType || i.listType === 'general');
 
   window._svUpcoming = upcoming;
+
+  const renderCheckList = (items) => items.map(item => {
+    const done = item.done || false;
+    return `<div class="sv-check-item ${done?'done':''}" id="svci-${item.id}">
+      <input type="checkbox" ${done?'checked':''} onchange="svToggleCheck('${item.id}',this.checked)">
+      <label onclick="svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${esc(item.text)}</label>
+    </div>`;
+  }).join('');
 
   const nextLabel = nextFlight ? (nextFlight.type === 'ground' ? 'Next Ground Lesson' : 'Next Flight') : '';
   const nextHtml = nextFlight ? `
@@ -1613,18 +1631,13 @@ function renderSvHome(records, body) {
       <div class="sv-next-meta">${nextFlight.date ? fmtDateStr(nextFlight.date) : ''}${nextFlight.time ? ' · ' + fmt12(nextFlight.time) : ''}${nextFlight.aircraft ? ' · ' + esc(nextFlight.aircraft) : ''}</div>
       ${nextFlight.notes ? `<div class="sv-next-notes">${esc(nextFlight.notes)}</div>` : ''}
       <button onclick="event.stopPropagation();exportToCalendar(window._svUpcoming[0])" style="margin-top:10px;background:rgba(126,184,247,0.2);border:0.5px solid rgba(126,184,247,0.4);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Add to Calendar</button>
+      ${flightTasks.length ? `<div style="margin-top:14px;border-top:0.5px solid rgba(126,184,247,0.2);padding-top:12px"><div style="font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Prep for this lesson</div>${renderCheckList(flightTasks)}</div>` : ''}
     </div>` : '';
 
-  const checkHtml = checkItems.length ? `
+  const checkHtml = generalTasks.length ? `
     <div class="section-label">To Do</div>
     <div class="card" style="margin-bottom:12px">
-      ${checkItems.map(item => {
-        const done = item.done || false;
-        return `<div class="sv-check-item ${done?'done':''}" id="svci-${item.id}">
-          <input type="checkbox" ${done?'checked':''} onchange="svToggleCheck('${item.id}',this.checked)">
-          <label onclick="svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${esc(item.text)}</label>
-        </div>`;
-      }).join('')}
+      ${renderCheckList(generalTasks)}
     </div>` : '';
 
   const upcomingMore = upcoming.slice(1).map((i, idx) => `
@@ -3206,10 +3219,17 @@ function renderStudents() {
             <div style="padding:10px 14px 14px"></div>
           </div>
           <div class="stu-inner-section" id="stu-checklist-${s.id}">
-            <div id="stu-check-list-${s.id}"></div>
-            <div style="padding:10px 14px 14px">
-              <textarea id="stu-check-input-${s.id}" class="sched-notes" placeholder="Type tasks here, one per line…" style="min-height:72px;margin-bottom:8px"></textarea>
-              <button class="new-btn" style="margin-bottom:0" onclick="submitChecklistItems(${s.id})">Add Tasks</button>
+            <div style="padding:10px 14px 4px;font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em">Next Flight</div>
+            <div id="stu-check-list-flight-${s.id}"></div>
+            <div style="padding:4px 14px 10px">
+              <textarea id="stu-check-input-flight-${s.id}" class="sched-notes" placeholder="Prep tasks for next lesson…" style="min-height:48px;margin-bottom:8px"></textarea>
+              <button class="new-btn" style="margin-bottom:0" onclick="submitChecklistItems(${s.id},'flight')">Add</button>
+            </div>
+            <div style="padding:10px 14px 4px;border-top:0.5px solid var(--border);font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">General</div>
+            <div id="stu-check-list-general-${s.id}"></div>
+            <div style="padding:4px 14px 14px">
+              <textarea id="stu-check-input-general-${s.id}" class="sched-notes" placeholder="General tasks, no deadline…" style="min-height:48px;margin-bottom:8px"></textarea>
+              <button class="new-btn" style="margin-bottom:0" onclick="submitChecklistItems(${s.id},'general')">Add</button>
             </div>
           </div>
           <div class="stu-inner-section" id="stu-syllabus-${s.id}">
