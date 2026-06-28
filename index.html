@@ -1429,6 +1429,7 @@ function removeCheckItem(sid, itemId) {
 
 /* ── Syllabus ── */
 function renderStuSyl(sid) {
+  syncAllDebriefSyllabus();
   const syl = getStuSyl(sid);
   const el = document.getElementById(`stu-syl-list-${sid}`);
   el.innerHTML = PPL_SYLLABUS.map(stage => {
@@ -1469,6 +1470,7 @@ function toggleSylItem(sid, stageKey, type, num, checked) {
 
 /* ── Admin view of student progress / log / payments ── */
 function renderStuProgress(sid) {
+  syncAllDebriefSyllabus();
   const syl = getStuSyl(sid);
   const el = document.getElementById(`stu-progress-content-${sid}`);
   el.innerHTML = PPL_SYLLABUS.map(stage => {
