@@ -1848,8 +1848,21 @@ function closeFlightDetail() {
 }
 
 function renderSvProgress(records, body) {
+  // Start with CFI-managed syllabus overrides, then layer in debrief-derived completions
   const sylRec = records.find(r => r.record_type === 'syllabus');
-  const syl = sylRec?.data || {};
+  const syl = JSON.parse(JSON.stringify(sylRec?.data || {}));
+  records.filter(r => r.record_type === 'debrief').forEach(r => {
+    const db = r.data || r;
+    const sylKey = db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType);
+    if (!sylKey) return;
+    const parts = sylKey.split(':');
+    if (parts.length !== 3) return;
+    const [stageKey, type, numStr] = parts;
+    const num = parseInt(numStr);
+    if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
+    if (!syl[stageKey][type]) syl[stageKey][type] = {};
+    syl[stageKey][type][num] = true;
+  });
   body.innerHTML = PPL_SYLLABUS.map(stage => {
     const st = syl[stage.key] || { f:{}, g:{} };
     const total = stage.flights.length + stage.grounds.length;
