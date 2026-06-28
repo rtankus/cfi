@@ -2118,6 +2118,7 @@ function showTab(tab) {
 function renderCFIHome() {
   const body = document.getElementById('cfiHomeBody');
   if (!body) return;
+  syncAllDebriefSyllabus();
   const students = getStudents();
   const today = new Date().toISOString().slice(0,10);
 
@@ -2455,9 +2456,15 @@ function setDbLesson(sylKey, lessonText) {
     sel.value = sylKey;
     customInput.style.display = 'none';
   } else if (lessonText) {
-    sel.value = 'custom';
-    customInput.value = lessonText;
-    customInput.style.display = '';
+    const autoKey = _lessonTextToSylKey(lessonText);
+    if (autoKey && sel.querySelector(`option[value="${autoKey}"]`)) {
+      sel.value = autoKey;
+      customInput.style.display = 'none';
+    } else {
+      sel.value = 'custom';
+      customInput.value = lessonText;
+      customInput.style.display = '';
+    }
   } else {
     sel.value = '';
     customInput.value = '';
@@ -2465,9 +2472,33 @@ function setDbLesson(sylKey, lessonText) {
   }
 }
 
+function _lessonTextToSylKey(lessonText, sessionType) {
+  if (!lessonText) return null;
+  const normalized = lessonText.replace(/^(Flight|Ground)\s*\d+[:\s]+/i, '').trim().toLowerCase();
+  const isGround = sessionType === 'gnd';
+  for (const stage of PPL_SYLLABUS) {
+    const list = isGround ? stage.grounds : stage.flights;
+    const type = isGround ? 'g' : 'f';
+    for (const l of list) {
+      if (l.t.toLowerCase() === normalized) return `${stage.key}:${type}:${l.n}`;
+    }
+  }
+  // fallback: try both lists if session type not conclusive
+  for (const stage of PPL_SYLLABUS) {
+    for (const l of stage.flights) {
+      if (l.t.toLowerCase() === normalized) return `${stage.key}:f:${l.n}`;
+    }
+    for (const l of stage.grounds) {
+      if (l.t.toLowerCase() === normalized) return `${stage.key}:g:${l.n}`;
+    }
+  }
+  return null;
+}
+
 function autoCheckSyllabus(db) {
-  if (!db.sylKey || !db.student) return;
-  const parts = db.sylKey.split(':');
+  const sylKey = db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType);
+  if (!sylKey || !db.student) return;
+  const parts = sylKey.split(':');
   if (parts.length !== 3) return;
   const [stageKey, type, numStr] = parts;
   const num = parseInt(numStr);
@@ -2479,6 +2510,10 @@ function autoCheckSyllabus(db) {
   if (syl[stageKey][type][num]) return;
   syl[stageKey][type][num] = true;
   saveStuSyl(stu.id, syl, stu.email);
+}
+
+function syncAllDebriefSyllabus() {
+  getHistory().filter(r => r.type === 'debrief').forEach(db => autoCheckSyllabus(db));
 }
 function setRating(r) {
   dbRating = r;
@@ -3512,6 +3547,7 @@ function saveSylMeta(arr)   { _syncKV("raina_syllabi", JSON.stringify(arr)); }
 
 /* ── Syllabus tab entry point ── */
 async function renderSyllabusTab() {
+  syncAllDebriefSyllabus();
   syllabusMeta = getSylMeta();
   if (!syllabusMeta.length) {
     await seedBuiltinSyllabus();
