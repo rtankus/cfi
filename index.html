@@ -1598,6 +1598,55 @@ function _setSvDone(itemId, checked) {
   localStorage.setItem(_svDoneKey(), JSON.stringify(m));
 }
 
+/* ── Student dismissed completed sessions ── */
+function _svDismissedKey() { return 'sv_dismissed_' + (window._svEmail || ''); }
+function _getSvDismissed() { try { return JSON.parse(localStorage.getItem(_svDismissedKey()) || '{}'); } catch { return {}; } }
+function svDismissSession(schedItemId) {
+  const m = _getSvDismissed(); m[schedItemId] = true;
+  localStorage.setItem(_svDismissedKey(), JSON.stringify(m));
+  renderStudentView();
+}
+
+function svShowDebrief(db) {
+  const isGround = db.sessionType === 'gnd';
+  document.getElementById('fdContent').innerHTML = `
+    <div class="fd-label">${isGround ? 'Ground Lesson' : 'Flight Debrief'}</div>
+    <div class="fd-title">${esc(db.lesson || db.airport || 'Session')}</div>
+    <div class="fd-meta-row">
+      ${db.date ? `<span class="fd-pill">${fmtDateStr(db.date)}</span>` : ''}
+      ${db.aircraft ? `<span class="fd-pill">${esc(db.aircraft)}</span>` : ''}
+      ${db.hours ? `<span class="fd-pill">${db.hours} hrs</span>` : ''}
+    </div>
+    ${db.wentWell ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Went Well</div><div style="font-size:13px;color:var(--text1)">${esc(db.wentWell)}</div></div>` : ''}
+    ${db.needsWork ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Needs Work</div><div style="font-size:13px;color:var(--text1)">${esc(db.needsWork)}</div></div>` : ''}
+    ${db.nextTime ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Next Time</div><div style="font-size:13px;color:var(--text1)">${esc(db.nextTime)}</div></div>` : ''}
+    ${db.notes ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Notes</div><div style="font-size:13px;color:var(--text1)">${esc(db.notes)}</div></div>` : ''}
+  `;
+  document.getElementById('fdOverlay').classList.add('open');
+}
+
+function svShowInvoice(inv) {
+  const lineItemsHtml = (inv.lineItems || []).map(li => `
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-top:0.5px solid var(--border)">
+      <span style="color:var(--text2)">${esc(li.name||'')}${li.qty !== 1 ? ` × ${li.qty} ${li.unit||''}` : ''}</span>
+      <span>$${((li.rate||0)*(li.qty||1)).toFixed(2)}</span>
+    </div>`).join('');
+  document.getElementById('fdContent').innerHTML = `
+    <div class="fd-label">Invoice</div>
+    <div class="fd-title">Invoice #${inv.invNum || '—'}</div>
+    <div class="fd-meta-row">
+      <span class="fd-pill">${inv.invDate ? fmtDateStr(inv.invDate) : '—'}</span>
+      <span class="sv-pay-badge ${inv.paid ? 'paid' : 'unpaid'}">${inv.paid ? 'Paid' : 'Unpaid'}</span>
+    </div>
+    ${lineItemsHtml}
+    <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:8px 0;border-top:1px solid var(--border);margin-top:4px">
+      <span>Total</span><span>$${(inv.total || 0).toFixed(2)}</span>
+    </div>
+    ${inv.notes ? `<div style="font-size:12px;color:var(--text2);margin-top:8px">${esc(inv.notes)}</div>` : ''}
+  `;
+  document.getElementById('fdOverlay').classList.add('open');
+}
+
 function renderSvHome(records, body) {
   const schedRec  = records.find(r => r.record_type === 'schedule');
   const checkRec  = records.find(r => r.record_type === 'checklist');
@@ -1615,6 +1664,25 @@ function renderSvHome(records, body) {
 
   window._svUpcoming = upcoming;
 
+  // Build completed sessions (have both debrief + invoice linked, not dismissed)
+  const debriefBySched = {}, invoiceBySched = {};
+  records.forEach(r => {
+    if (r.record_type === 'debrief' && r.data?.schedItemId) debriefBySched[r.data.schedItemId] = r.data;
+    if (r.record_type === 'invoice' && r.data?.schedItemId) invoiceBySched[r.data.schedItemId] = r.data;
+  });
+  const dismissed = _getSvDismissed();
+  const completedSessions = Object.keys(debriefBySched)
+    .filter(sid => invoiceBySched[sid] && !dismissed[sid])
+    .map(sid => ({ schedItemId: sid, debrief: debriefBySched[sid], invoice: invoiceBySched[sid] }))
+    .sort((a, b) => (b.debrief.date || '').localeCompare(a.debrief.date || ''));
+  window._svCompletedSessions = completedSessions;
+
+  // Outstanding unpaid invoices
+  const unpaidInvoices = records.filter(r => r.record_type === 'invoice' && !r.data?.paid)
+    .map(r => r.data).sort((a, b) => (b.invDate || '').localeCompare(a.invDate || ''));
+  const totalOutstanding = unpaidInvoices.reduce((s, inv) => s + (inv.total || 0), 0);
+  window._svUnpaidInvoices = unpaidInvoices;
+
   const renderCheckList = (items) => items.map(item => {
     const done = item.done || false;
     return `<div class="sv-check-item ${done?'done':''}" id="svci-${item.id}">
@@ -1622,6 +1690,19 @@ function renderSvHome(records, body) {
       <label onclick="svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${esc(item.text)}</label>
     </div>`;
   }).join('');
+
+  const balanceBarHtml = unpaidInvoices.length ? `
+    <div style="background:rgba(255,107,107,0.1);border:0.5px solid rgba(255,107,107,0.35);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:0.05em">Outstanding Balance</div>
+        <div style="font-size:16px;font-weight:700;color:var(--danger)">$${totalOutstanding.toFixed(2)}</div>
+      </div>
+      ${unpaidInvoices.map((inv, idx) => `
+        <div onclick="svShowInvoice(window._svUnpaidInvoices[${idx}])" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:0.5px solid rgba(255,107,107,0.2);cursor:pointer">
+          <div style="font-size:12px;color:var(--text2)">Invoice #${inv.invNum || '—'} · ${inv.invDate ? fmtDateStr(inv.invDate) : '—'}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--danger)">$${(inv.total || 0).toFixed(2)} ›</div>
+        </div>`).join('')}
+    </div>` : '';
 
   const nextLabel = nextFlight ? (nextFlight.type === 'ground' ? 'Next Ground Lesson' : 'Next Flight') : '';
   const nextHtml = nextFlight ? `
@@ -1649,9 +1730,34 @@ function renderSvHome(records, body) {
       <div style="font-size:18px;color:var(--text3)">›</div>
     </div>`).join('');
 
-  body.innerHTML = nextHtml + checkHtml +
+  const completedHtml = completedSessions.length ? `
+    <div class="section-label">Completed</div>
+    ${completedSessions.map((s, idx) => {
+      const db = s.debrief, inv = s.invoice;
+      const isGround = db.sessionType === 'gnd';
+      return `<div class="card" style="margin-bottom:10px;padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:${isGround ? 'var(--amber)' : 'var(--blue)'};margin-bottom:2px">${isGround ? '📚 Ground' : '✈ Flight'}</div>
+            <div style="font-size:14px;font-weight:600">${esc(db.lesson || db.airport || 'Session')}</div>
+            <div style="font-size:12px;color:var(--text2)">${db.date ? fmtDateStr(db.date) : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="sv-pay-badge ${inv.paid ? 'paid' : 'unpaid'}">${inv.paid ? 'Paid' : 'Unpaid'}</span>
+            <button onclick="svDismissSession('${s.schedItemId}')" style="background:none;border:none;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;padding:0 2px">×</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button onclick="svShowDebrief(window._svCompletedSessions[${idx}].debrief)" style="flex:1;padding:7px 10px;background:var(--blue-dim);border:0.5px solid rgba(126,184,247,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">Debrief</button>
+          <button onclick="svShowInvoice(window._svCompletedSessions[${idx}].invoice)" style="flex:1;padding:7px 10px;background:var(--accent-dim);border:0.5px solid rgba(200,240,160,0.5);border-radius:20px;font-size:12px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer">Invoice</button>
+        </div>
+      </div>`;
+    }).join('')}` : '';
+
+  body.innerHTML = balanceBarHtml + nextHtml + checkHtml +
     (upcomingMore ? `<div class="section-label">Upcoming</div>${upcomingMore}` : '') +
-    (!nextHtml && !checkHtml ? '<div class="sv-empty">Nothing scheduled yet.</div>' : '');
+    completedHtml +
+    (!nextHtml && !checkHtml && !completedSessions.length ? '<div class="sv-empty">Nothing scheduled yet.</div>' : '');
 }
 
 async function svToggleCheck(itemId, checked) {
