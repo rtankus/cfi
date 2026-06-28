@@ -669,17 +669,20 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 <div class="page" id="page-resources">
   <div class="page-header">
     <span class="page-title">Resources</span>
-    <button class="ghost-btn" onclick="triggerResourceUpload()">+ Upload PDF</button>
+    <div style="display:flex;gap:8px">
+      <button class="ghost-btn" onclick="promptResourceLink()">🔗 Link PDF</button>
+      <button class="ghost-btn" onclick="triggerResourceUpload()">+ Upload</button>
+    </div>
   </div>
-  <input type="file" id="resourceFileInput" accept="application/pdf" style="display:none" onchange="handleResourceUpload(this)" />
+  <input type="file" id="resourceFileInput" accept="image/*,application/pdf,.doc,.docx,.ppt,.pptx" style="display:none" onchange="handleResourceUpload(this)" />
 
   <div id="resListView">
     <div class="res-grid" id="resGrid"></div>
     <div class="upload-zone" style="cursor:pointer" onclick="triggerResourceUpload()">
-      <input type="file" accept="application/pdf" style="display:none" onchange="handleResourceUpload(this)" />
+      <input type="file" accept="image/*,application/pdf,.doc,.docx,.ppt,.pptx" style="display:none" onchange="handleResourceUpload(this)" />
       <div class="upload-icon">📚</div>
-      <p>Upload reference PDFs</p>
-      <small>PHAK, AFH, POH, charts — tap to view any time</small>
+      <p>Upload file <span style="color:var(--text3);font-weight:400">or</span> 🔗 Link PDF</p>
+      <small>PDFs, images, Word, PowerPoint — or link large files</small>
     </div>
   </div>
 
@@ -1142,7 +1145,7 @@ function stuTab(sid, tab, btn) {
   btn.classList.add('active');
   document.getElementById(`stu-${tab}-${sid}`).classList.add('active');
   if (tab === 'schedule')  { renderStuSched(sid);  _pushStuData(sid, 'schedule'); }
-  if (tab === 'checklist') { renderStuCheck(sid);  _pushStuData(sid, 'checklist'); }
+  if (tab === 'checklist') { _pullAndRenderStuCheck(sid); }
   if (tab === 'syllabus')  renderStuSyl(sid);
   if (tab === 'progress')  renderStuProgress(sid);
   if (tab === 'log')       renderStuLog(sid);
@@ -1156,6 +1159,20 @@ async function _pushStuData(sid, type) {
   const id   = type === 'schedule' ? `sched_${sid}` : `check_${sid}`;
   const { error } = await _sb.from('student_records').upsert({ id, student_email: email.trim().toLowerCase(), record_type: type, data, updated_at: new Date().toISOString() });
   if (error) console.error(`[_pushStuData ${type}]`, error);
+}
+
+async function _pullAndRenderStuCheck(sid) {
+  const email = getStuEmail(sid);
+  if (_sbUser && email) {
+    const { data: rec, error } = await _sb.from('student_records')
+      .select('*').eq('id', `check_${sid}`).maybeSingle();
+    if (!error && rec) {
+      const v = JSON.stringify(rec.data);
+      _cache[`stu_check_${sid}`] = v;
+      _sb.from('kv_store').upsert({ key: `stu_check_${sid}`, value: v, user_id: _sbUser.id, updated_at: new Date().toISOString() });
+    }
+  }
+  renderStuCheck(sid);
 }
 
 /* ── Schedule ── */
@@ -1325,6 +1342,8 @@ function renderStuLog(sid) {
     .filter(r => r.type === 'debrief' && r.student === stu.name)
     .sort((a,b) => (b.date||'').localeCompare(a.date||''));
   if (!debriefs.length) { el.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--text3)">No flight log entries yet.</div>'; return; }
+  const invoiceBySchedId = {};
+  getHistory().forEach(r => { if (r.schedItemId && (!r.type || r.type === 'invoice')) invoiceBySchedId[r.schedItemId] = r.id; });
   const totals = { total:0, solo:0, xc:0, night:0, inst:0 };
   const rows = debriefs.map(db => {
     const hrs  = parseFloat(db.hours) || 0;
@@ -1335,10 +1354,15 @@ function renderStuLog(sid) {
     totals.total += hrs; totals.xc += xc; totals.night += ngt; totals.inst += inst;
     if (isSolo) totals.solo += hrs;
     const v = n => n ? n.toFixed(1) : '<span style="color:var(--text3)">—</span>';
+    const linkedInvoiceId = db.schedItemId ? invoiceBySchedId[db.schedItemId] : null;
+    const btnStyle = (bg, border, color) => `style="padding:3px 8px;background:${bg};border:0.5px solid ${border};border-radius:10px;font-size:10px;font-weight:600;color:${color};font-family:inherit;cursor:pointer"`;
+    const debriefBtn = `<button onclick="openSchedDebrief(${db.id})" ${btnStyle('var(--blue-dim)','rgba(126,184,247,0.5)','var(--blue)')}>Debrief</button>`;
+    const invoiceBtn = linkedInvoiceId ? `<button onclick="openSchedInvoice(${linkedInvoiceId})" ${btnStyle('var(--accent-dim)','rgba(200,240,160,0.5)','var(--accent)')}>Invoice</button>` : '';
     return `<div class="sv-log-row">
       <div>
         <div style="font-size:13px;font-weight:500">${esc(db.lesson||db.airport||'Flight')}</div>
         <div style="font-size:11px;color:var(--text3)">${db.date||''}</div>
+        <div style="display:flex;gap:4px;margin-top:4px">${debriefBtn}${invoiceBtn}</div>
       </div>
       <span class="sv-log-hrs val">${v(hrs)}</span>
       <span class="sv-log-hrs">${isSolo ? v(hrs) : '<span style="color:var(--text3)">—</span>'}</span>
@@ -1479,13 +1503,14 @@ async function svToggleCheck(itemId, checked) {
   }
 
   if (_sbUser) {
-    await _sb.from('student_records').upsert({
+    const { error } = await _sb.from('student_records').upsert({
       id: rec.id,
       student_email: _sbUser.email.trim().toLowerCase(),
       record_type: 'checklist',
       data: rec.data,
       updated_at: new Date().toISOString()
     });
+    if (error) { console.error('[svToggleCheck]', error); showToast('Could not save: ' + error.message); }
   }
 }
 
@@ -1612,24 +1637,36 @@ function exportToCalendar(item) {
 function renderSvResources(records, body) {
   const resources = records.filter(r => r.record_type === 'resource').map(r => r.data);
   if (!resources.length) { body.innerHTML = '<div class="sv-empty">No resources shared yet.</div>'; return; }
-  body.innerHTML = resources.map(r => `
-    <div class="sv-card" style="display:flex;align-items:center;padding:14px;margin-bottom:8px;cursor:pointer;gap:12px" onclick="svOpenResource('${r.id}','${esc(r.name||'')}','${r.cfi_user_id}')">
-      <div style="font-size:24px">📄</div>
+  body.innerHTML = resources.map(r => {
+    const t = r.fileType || '';
+    const icon = r.isLink ? '🔗' : t.startsWith('image/') ? '🖼️' : t.includes('word') || t.includes('.doc') ? '📝' : t.includes('presentation') || t.includes('ppt') ? '📊' : '📄';
+    const opensInBrowser = r.isLink || (r.fileType && r.fileType !== 'application/pdf');
+    const sub = opensInBrowser ? 'Opens in browser' : (r.pageCount||'?') + ' page' + (r.pageCount!==1?'s':'');
+    return `<div class="sv-card" style="display:flex;align-items:center;padding:14px;margin-bottom:8px;cursor:pointer;gap:12px" onclick="svOpenResource('${r.id}','${esc(r.name||'')}','${r.cfi_user_id}')">
+      <div style="font-size:24px">${icon}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name||'Resource')}</div>
-        <div style="font-size:12px;color:var(--text2)">${r.pageCount||'?'} page${r.pageCount!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--text2)">${sub}</div>
       </div>
       <span style="color:var(--text3);font-size:18px">›</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 let _svPdfDoc = null, _svPdfPage = 1, _svPdfTotal = 1;
 
 async function svOpenResource(id, name, cfiUserId) {
+  const rec = (window._svRecords || []).find(r => r.record_type === 'resource' && String(r.data?.id) === String(id));
+  if (rec?.data?.isLink && rec?.data?.url) { window.open(rec.data.url, '_blank'); return; }
+  const isPDF = !rec?.data?.fileType || rec.data.fileType === 'application/pdf';
+  if (!isPDF) {
+    if (rec?.data?.signedUrl) window.open(rec.data.signedUrl, '_blank');
+    else showToast('File not available');
+    return;
+  }
   showToast('Loading…');
   try {
     await ensurePDFJS();
-    const rec = (window._svRecords || []).find(r => r.record_type === 'resource' && String(r.data?.id) === String(id));
     let buffer;
     if (rec?.data?.signedUrl) {
       const resp = await fetch(rec.data.signedUrl);
@@ -3084,7 +3121,7 @@ async function dbDeletePDF(id) {
 
 async function dbSaveRes(id, name, file) {
   const path = `${_sbUser.id}/resources/${id}`;
-  const { error } = await _sb.storage.from('pdfs').upload(path, file, { upsert: true, contentType: 'application/pdf' });
+  const { error } = await _sb.storage.from('pdfs').upload(path, file, { upsert: true, contentType: file.type || 'application/octet-stream' });
   if (error) throw new Error('Upload failed: ' + error.message);
 }
 async function dbLoadRes(id) {
@@ -3245,7 +3282,8 @@ async function handleSyllabusUpload(input) {
     await loadSyllabus(id);
     showToast("Uploaded ✓");
   } catch (err) {
-    showToast("Error loading PDF");
+    const msg = err.message || '';
+    showToast(msg.includes('maximum allowed size') ? 'PDF too large — increase bucket limit in Supabase Storage settings' : msg || 'Error loading PDF');
     console.error(err);
   }
 }
@@ -3414,7 +3452,7 @@ async function _pushSharedResources(arr) {
   // Generate signed URLs for any resource that is missing one
   let metaChanged = false;
   const enriched = await Promise.all(arr.map(async r => {
-    if (r.signedUrl) return r;
+    if (r.isLink || r.signedUrl) return r;
     const { data: sd } = await _sb.storage.from('pdfs').createSignedUrl(`${_sbUser.id}/resources/${r.id}`, 315360000);
     if (sd?.signedUrl) { metaChanged = true; return { ...r, signedUrl: sd.signedUrl }; }
     return r;
@@ -3437,30 +3475,52 @@ function triggerResourceUpload() {
   document.getElementById("resourceFileInput").click();
 }
 
+function promptResourceLink() {
+  const url = prompt("Paste the PDF share link (Google Drive, iCloud, Dropbox, etc.):");
+  if (!url || !url.trim()) return;
+  const defaultName = url.includes('drive.google') ? 'Google Drive PDF'
+    : url.includes('icloud') ? 'iCloud PDF'
+    : url.includes('dropbox') ? 'Dropbox PDF'
+    : 'Linked PDF';
+  const name = prompt("Display name for this PDF:", defaultName);
+  if (!name || !name.trim()) return;
+  const id = Date.now();
+  resMeta = getResMeta();
+  resMeta.push({ id, name: name.trim(), pageCount: null, url: url.trim(), isLink: true });
+  saveResMeta(resMeta);
+  renderResourcesTab();
+  showToast("Link added ✓");
+}
+
 async function handleResourceUpload(input) {
   const file = input.files[0];
   if (!file) return;
   input.value = "";
+  const isPDF = file.type === 'application/pdf';
   try {
-    showToast("Loading PDF…");
-    const buffer = await file.arrayBuffer();
-    await ensurePDFJS();
-    const typed   = new Uint8Array(buffer.slice(0)); // slice so PDF.js worker transfer doesn't detach buffer
-    const tmpDoc  = await window.pdfjsLib.getDocument({ data: typed }).promise;
-    const pageCount = tmpDoc.numPages;
+    showToast("Uploading…");
+    let pageCount = null;
+    if (isPDF) {
+      const buffer = await file.arrayBuffer();
+      await ensurePDFJS();
+      const typed = new Uint8Array(buffer.slice(0));
+      const tmpDoc = await window.pdfjsLib.getDocument({ data: typed }).promise;
+      pageCount = tmpDoc.numPages;
+    }
     const id   = Date.now();
-    const name = file.name.replace(/\.pdf$/i, "");
+    const name = file.name.replace(/\.[^.]+$/, "");
     await dbSaveRes(id, name, file);
     const resPath = `${_sbUser.id}/resources/${id}`;
     const { data: sd } = await _sb.storage.from('pdfs').createSignedUrl(resPath, 315360000);
     const signedUrl = sd?.signedUrl || null;
     resMeta = getResMeta();
-    resMeta.push({ id, name, pageCount, signedUrl });
+    resMeta.push({ id, name, pageCount, signedUrl, fileType: file.type });
     saveResMeta(resMeta);
     renderResourcesTab();
     showToast("Uploaded ✓");
   } catch (err) {
-    showToast(err.message || "Error processing PDF");
+    const msg = err.message || '';
+    showToast(msg.includes('maximum allowed size') ? 'File too large — use 🔗 Link PDF for large files' : msg || 'Error uploading');
     console.error('[resource upload]', err);
   }
 }
@@ -3471,24 +3531,35 @@ function renderResourcesTab() {
   const grid = document.getElementById("resGrid");
   if (!grid) return;
   if (!resMeta.length) { grid.innerHTML = ""; return; }
-  grid.innerHTML = resMeta.map(r => `
-    <div class="res-card" onclick="openResource(${r.id})">
-      <span class="res-card-icon">📄</span>
+  grid.innerHTML = resMeta.map(r => {
+    const t = r.fileType || '';
+    const icon = r.isLink ? '🔗' : t.startsWith('image/') ? '🖼️' : t.includes('word') || t.includes('.doc') ? '📝' : t.includes('presentation') || t.includes('ppt') ? '📊' : '📄';
+    const meta = r.isLink ? 'External link' : !r.pageCount ? 'Tap to open' : r.pageCount + ' page' + (r.pageCount !== 1 ? 's' : '');
+    return `<div class="res-card" onclick="openResource(${r.id})">
+      <span class="res-card-icon">${icon}</span>
       <div class="res-card-info">
         <div class="res-card-name">${r.name}</div>
-        <div class="res-card-meta">${r.pageCount} page${r.pageCount !== 1 ? "s" : ""}</div>
+        <div class="res-card-meta">${meta}</div>
       </div>
       <button class="res-card-del" onclick="event.stopPropagation();deleteResource(${r.id})">🗑</button>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 async function openResource(id) {
+  const meta = resMeta.find(r => r.id === id);
+  if (meta?.isLink) { window.open(meta.url, '_blank'); return; }
+  const isPDF = !meta?.fileType || meta.fileType === 'application/pdf';
+  if (!isPDF) {
+    if (meta?.signedUrl) window.open(meta.signedUrl, '_blank');
+    else showToast("File not available — please re-upload");
+    return;
+  }
   activeResId = id;
   resPdfDoc   = null;
   resPage     = 1;
   document.getElementById("resListView").style.display   = "none";
   document.getElementById("resViewerView").style.display = "block";
-  const meta = resMeta.find(r => r.id === id);
   document.getElementById("resViewerTitle").textContent = meta ? meta.name : "";
   document.getElementById("resLoading").style.display = "flex";
   try {
