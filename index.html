@@ -356,8 +356,19 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sched-notes::placeholder { color: var(--text3); }
 .sched-add-btn { width: 100%; padding: 11px; background: transparent; border: 0.5px dashed var(--border2); border-radius: var(--radius-sm); color: var(--text2); font-size: 13px; font-family: inherit; cursor: pointer; margin: 10px 14px 0; width: calc(100% - 28px); }
 .sched-item.pending { border-left: 2px solid var(--accent); background: var(--accent-dim); }
+.sched-item.editing { border-left: 2px solid var(--blue); background: rgba(100,180,255,0.05); }
 .sched-confirm-btn { background: var(--accent); color: var(--accent-text); border: none; border-radius: 14px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .sched-confirm-btn:active { opacity: 0.8; }
+.sched-save-btn { background: var(--blue); color: #fff; border: none; border-radius: 14px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.sched-save-btn:active { opacity: 0.8; }
+.sched-edit-btn { background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 14px; padding: 4px 10px; font-size: 12px; font-weight: 500; color: var(--text2); cursor: pointer; font-family: inherit; white-space: nowrap; }
+.sched-edit-btn:active { opacity: 0.7; }
+.sched-ro-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sched-ro-date { font-size: 13px; font-weight: 600; color: var(--text); }
+.sched-ro-time { font-size: 13px; color: var(--text2); }
+.sched-ro-aircraft { font-size: 12px; color: var(--text2); background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 6px; padding: 2px 7px; }
+.sched-ro-topic { font-size: 14px; font-weight: 600; color: var(--text); }
+.sched-ro-notes { font-size: 13px; color: var(--text2); white-space: pre-wrap; }
 
 /* ── CHECKLIST ── */
 .check-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 0.5px solid var(--border); }
@@ -939,10 +950,11 @@ async function refreshStudentView(showLoading) {
 
 /* ── Direct student notification via edge function ── */
 async function notifyStudent(email, recordType, data) {
-  if (!_sbUser || !email) return;
+  if (!email) return;
   try {
-    await _sb.functions.invoke('notify-student', { body: { direct: true, record_type: recordType, student_email: email.trim().toLowerCase(), data } });
-  } catch(e) { console.warn('[notify]', e); }
+    const { error } = await _sb.functions.invoke('notify-student', { body: { direct: true, record_type: recordType, student_email: email.trim().toLowerCase(), data } });
+    if (error) { console.error('[notify] function error:', error); showToast('Email not sent: ' + (error.message || error)); }
+  } catch(e) { console.error('[notify] exception:', e); showToast('Email notification failed'); }
 }
 
 const RATING_CLASS = { 'Tough day':'tough', 'Needs review':'needs-review', 'Solid':'solid', 'Great flight!':'great' };
@@ -1204,28 +1216,76 @@ function renderStuSched(sid) {
   const data = getStuSched(sid);
   const el = document.getElementById(`stu-sched-list-${sid}`);
   if (!data.items.length) { el.innerHTML = '<div style="padding:12px 14px;font-size:13px;color:var(--text3)">No lessons scheduled yet.</div>'; return; }
-  el.innerHTML = data.items.map(item => `
-    <div class="sched-item${item.pending?' pending':''}">
-      <div class="sched-item-row">
-        <input class="sched-field" style="max-width:110px" type="date" value="${item.date||''}" onchange="updateSchedItem(${sid},'${item.id}','date',this.value)">
-        <input class="sched-field" style="max-width:76px" type="time" value="${item.time||''}" onchange="updateSchedItem(${sid},'${item.id}','time',this.value)">
-        <select class="sched-select" style="color:${(item.type||'flight')==='flight'?'var(--blue)':'var(--amber)'}" onchange="updateSchedItem(${sid},'${item.id}','type',this.value);this.style.color=this.value==='ground'?'var(--amber)':'var(--blue)'">
-          <option value="flight" ${(item.type||'flight')==='flight'?'selected':''}>✈ Flight</option>
-          <option value="ground" ${item.type==='ground'?'selected':''}>📚 Ground</option>
-        </select>
-        <input class="sched-field" style="max-width:80px" placeholder="N-number" value="${item.aircraft||''}" onchange="updateSchedItem(${sid},'${item.id}','aircraft',this.value)">
-        <select class="sched-select" onchange="updateSchedItem(${sid},'${item.id}','status',this.value)">
-          <option ${item.status==='scheduled'?'selected':''}>scheduled</option>
-          <option ${item.status==='completed'?'selected':''}>completed</option>
-          <option ${item.status==='cancelled'?'selected':''}>cancelled</option>
-        </select>
-        ${item.pending?`<button class="sched-confirm-btn" onclick="confirmSchedItem(${sid},'${item.id}')">✓ Save</button>`:''}
+  el.innerHTML = data.items.map(item => {
+    if (item.pending) {
+      return `
+      <div class="sched-item pending">
+        <div class="sched-item-row">
+          <input class="sched-field" style="max-width:110px" type="date" value="${item.date||''}" onchange="updateSchedItem(${sid},'${item.id}','date',this.value)">
+          <input class="sched-field" style="max-width:76px" type="time" value="${item.time||''}" onchange="updateSchedItem(${sid},'${item.id}','time',this.value)">
+          <select class="sched-select" style="color:${(item.type||'flight')==='flight'?'var(--blue)':'var(--amber)'}" onchange="updateSchedItem(${sid},'${item.id}','type',this.value);this.style.color=this.value==='ground'?'var(--amber)':'var(--blue)'">
+            <option value="flight" ${(item.type||'flight')==='flight'?'selected':''}>✈ Flight</option>
+            <option value="ground" ${item.type==='ground'?'selected':''}>📚 Ground</option>
+          </select>
+          <input class="sched-field" style="max-width:80px" placeholder="N-number" value="${item.aircraft||''}" onchange="updateSchedItem(${sid},'${item.id}','aircraft',this.value)">
+          <select class="sched-select" onchange="updateSchedItem(${sid},'${item.id}','status',this.value)">
+            <option ${item.status==='scheduled'?'selected':''}>scheduled</option>
+            <option ${item.status==='completed'?'selected':''}>completed</option>
+            <option ${item.status==='cancelled'?'selected':''}>cancelled</option>
+          </select>
+          <button class="sched-confirm-btn" onclick="confirmSchedItem(${sid},'${item.id}')">✓ Save</button>
+          <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
+        </div>
+        <input class="sched-field" placeholder="Topic / lesson name" value="${esc(item.topic||'')}" onchange="updateSchedItem(${sid},'${item.id}','topic',this.value)" style="width:100%">
+        <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
+      </div>`;
+    }
+    const editing = _schedEditMode.has(`${sid}_${item.id}`);
+    if (editing) {
+      return `
+      <div class="sched-item editing">
+        <div class="sched-item-row">
+          <input class="sched-field" style="max-width:110px" type="date" value="${item.date||''}" onchange="updateSchedItem(${sid},'${item.id}','date',this.value)">
+          <input class="sched-field" style="max-width:76px" type="time" value="${item.time||''}" onchange="updateSchedItem(${sid},'${item.id}','time',this.value)">
+          <select class="sched-select" style="color:${(item.type||'flight')==='flight'?'var(--blue)':'var(--amber)'}" onchange="updateSchedItem(${sid},'${item.id}','type',this.value);this.style.color=this.value==='ground'?'var(--amber)':'var(--blue)'">
+            <option value="flight" ${(item.type||'flight')==='flight'?'selected':''}>✈ Flight</option>
+            <option value="ground" ${item.type==='ground'?'selected':''}>📚 Ground</option>
+          </select>
+          <input class="sched-field" style="max-width:80px" placeholder="N-number" value="${item.aircraft||''}" onchange="updateSchedItem(${sid},'${item.id}','aircraft',this.value)">
+          <select class="sched-select" onchange="updateSchedItem(${sid},'${item.id}','status',this.value)">
+            <option ${item.status==='scheduled'?'selected':''}>scheduled</option>
+            <option ${item.status==='completed'?'selected':''}>completed</option>
+            <option ${item.status==='cancelled'?'selected':''}>cancelled</option>
+          </select>
+          <button class="sched-save-btn" onclick="saveSchedItemEdit(${sid},'${item.id}')">✓ Save</button>
+          <button class="remove-btn" style="font-size:14px;color:var(--text2)" onclick="cancelSchedItemEdit(${sid},'${item.id}')">✕</button>
+          <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
+        </div>
+        <input class="sched-field" placeholder="Topic / lesson name" value="${esc(item.topic||'')}" onchange="updateSchedItem(${sid},'${item.id}','topic',this.value)" style="width:100%">
+        <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
+      </div>`;
+    }
+    // Locked (read-only) view
+    const typeColor = (item.type||'flight')==='flight' ? 'var(--blue)' : 'var(--amber)';
+    const typeLabel = (item.type||'flight')==='flight' ? '✈ Flight' : '📚 Ground';
+    const dateStr = item.date ? item.date.replace(/(\d{4})-(\d{2})-(\d{2})/,'$2/$3/$1') : '—';
+    const timeStr = item.time || '';
+    return `
+    <div class="sched-item">
+      <div class="sched-ro-row">
+        <span class="sched-ro-date">${dateStr}</span>
+        ${timeStr ? `<span class="sched-ro-time">${timeStr}</span>` : ''}
+        <span style="font-size:12px;font-weight:600;color:${typeColor}">${typeLabel}</span>
+        ${item.aircraft ? `<span class="sched-ro-aircraft">${esc(item.aircraft)}</span>` : ''}
+        <span class="sched-tag ${item.status||'scheduled'}">${item.status||'scheduled'}</span>
+        <button class="sched-edit-btn" onclick="editSchedItem(${sid},'${item.id}')">Edit</button>
         <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
       </div>
-      <input class="sched-field" placeholder="Topic / lesson name" value="${esc(item.topic||'')}" onchange="updateSchedItem(${sid},'${item.id}','topic',this.value)" style="width:100%">
-      <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
-      ${item.pending?'':`<button class="ghost-btn" style="font-size:12px;padding:5px 12px;margin-top:2px" onclick="exportToCalendar(${JSON.stringify(item).replace(/"/g,'&quot;')})">+ Calendar</button>`}
-    </div>`).join('');
+      ${item.topic ? `<div class="sched-ro-topic">${esc(item.topic)}</div>` : ''}
+      ${item.notes ? `<div class="sched-ro-notes">${esc(item.notes)}</div>` : ''}
+      <button class="ghost-btn" style="font-size:12px;padding:5px 12px;margin-top:2px" onclick="exportToCalendar(${JSON.stringify(item).replace(/"/g,'&quot;')})">+ Calendar</button>
+    </div>`;
+  }).join('');
 }
 function addScheduleItem(sid) {
   const newItem = { id: String(Date.now()), date:'', time:'', type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled', pending: true };
@@ -1241,7 +1301,42 @@ function confirmSchedItem(sid, itemId) {
   delete item.pending;
   _cache[`stu_sched_${sid}`] = JSON.stringify(data);
   renderStuSched(sid);
+  const email = getStuEmail(sid);
+  saveStuSched(sid, data, email);
+  if (email) notifyStudent(email, 'schedule', item);
+}
+const _schedEditMode = new Set();
+const _schedEditOriginals = new Map();
+
+function editSchedItem(sid, itemId) {
+  const data = getStuSched(sid);
+  const item = data.items.find(i => i.id === itemId);
+  if (!item) return;
+  _schedEditOriginals.set(`${sid}_${itemId}`, JSON.stringify(item));
+  _schedEditMode.add(`${sid}_${itemId}`);
+  renderStuSched(sid);
+}
+function saveSchedItemEdit(sid, itemId) {
+  const key = `${sid}_${itemId}`;
+  _schedEditMode.delete(key);
+  _schedEditOriginals.delete(key);
+  const data = getStuSched(sid);
+  renderStuSched(sid);
   saveStuSched(sid, data, getStuEmail(sid));
+  showToast('Lesson updated ✓');
+}
+function cancelSchedItemEdit(sid, itemId) {
+  const key = `${sid}_${itemId}`;
+  const orig = _schedEditOriginals.get(key);
+  if (orig) {
+    const data = getStuSched(sid);
+    const idx = data.items.findIndex(i => i.id === itemId);
+    if (idx !== -1) data.items[idx] = JSON.parse(orig);
+    _cache[`stu_sched_${sid}`] = JSON.stringify(data);
+  }
+  _schedEditMode.delete(key);
+  _schedEditOriginals.delete(key);
+  renderStuSched(sid);
 }
 function updateSchedItem(sid, itemId, field, val) {
   const data = getStuSched(sid);
@@ -1249,7 +1344,8 @@ function updateSchedItem(sid, itemId, field, val) {
   if (!item) return;
   item[field] = val;
   _cache[`stu_sched_${sid}`] = JSON.stringify(data);
-  if (!item.pending) saveStuSched(sid, data, getStuEmail(sid));
+  // Only auto-save for pending items that aren't in manual edit mode
+  // (confirmed items save explicitly via saveSchedItemEdit)
 }
 function removeSchedItem(sid, itemId) {
   const data = getStuSched(sid);
@@ -1501,14 +1597,16 @@ function renderSvHome(records, body) {
     ...i, done: _svDoneMap.hasOwnProperty(i.id) ? _svDoneMap[i.id] : (i.done || false)
   }));
 
+  window._svUpcoming = upcoming;
+
   const nextLabel = nextFlight ? (nextFlight.type === 'ground' ? 'Next Ground Lesson' : 'Next Flight') : '';
   const nextHtml = nextFlight ? `
-    <div class="sv-next-flight" onclick='showFlightDetail(${JSON.stringify(nextFlight)})' style="cursor:pointer">
+    <div class="sv-next-flight" onclick="showFlightDetail(window._svUpcoming[0])" style="cursor:pointer">
       <div class="sv-next-label">${nextLabel}</div>
       <div class="sv-next-title">${esc(nextFlight.topic || 'Lesson')}</div>
       <div class="sv-next-meta">${nextFlight.date ? fmtDateStr(nextFlight.date) : ''}${nextFlight.time ? ' · ' + fmt12(nextFlight.time) : ''}${nextFlight.aircraft ? ' · ' + esc(nextFlight.aircraft) : ''}</div>
       ${nextFlight.notes ? `<div class="sv-next-notes">${esc(nextFlight.notes)}</div>` : ''}
-      <button onclick='event.stopPropagation();exportToCalendar(${JSON.stringify(nextFlight)})' style="margin-top:10px;background:rgba(126,184,247,0.2);border:0.5px solid rgba(126,184,247,0.4);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Add to Calendar</button>
+      <button onclick="event.stopPropagation();exportToCalendar(window._svUpcoming[0])" style="margin-top:10px;background:rgba(126,184,247,0.2);border:0.5px solid rgba(126,184,247,0.4);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Add to Calendar</button>
     </div>` : '';
 
   const checkHtml = checkItems.length ? `
@@ -1523,8 +1621,8 @@ function renderSvHome(records, body) {
       }).join('')}
     </div>` : '';
 
-  const upcomingMore = upcoming.slice(1).map(i => `
-    <div class="sv-card" onclick='showFlightDetail(${JSON.stringify(i)})' style="flex-direction:row;align-items:center;padding:10px 14px;display:flex;gap:10px;cursor:pointer">
+  const upcomingMore = upcoming.slice(1).map((i, idx) => `
+    <div class="sv-card" onclick="showFlightDetail(window._svUpcoming[${idx + 1}])" style="flex-direction:row;align-items:center;padding:10px 14px;display:flex;gap:10px;cursor:pointer">
       <div style="flex:1">
         <div style="font-size:14px;font-weight:600">${esc(i.topic||'Lesson')}</div>
         <div style="font-size:12px;color:var(--text2)">${i.date ? fmtDateStr(i.date) : ''}${i.time ? ' · '+fmt12(i.time) : ''}${i.aircraft ? ' · '+esc(i.aircraft) : ''}</div>
