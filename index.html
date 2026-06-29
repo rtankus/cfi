@@ -1126,6 +1126,7 @@ async function clearAndResync(sid) {
   );
   const rows = matching.map(r => _safeRow(String(r.id), email, r.type || 'invoice', r)).filter(Boolean);
 
+  rebuildStudentSyllabus(stu.name);
   const sylData = getStuSyl(sid);
   if (Object.keys(sylData).length) {
     const row = _safeRow(`syl_${sid}`, email, 'syllabus', sylData);
@@ -2819,6 +2820,26 @@ function autoCheckSyllabus(db) {
   saveStuSyl(stu.id, syl, stu.email);
 }
 
+function rebuildStudentSyllabus(studentName) {
+  const students = getStudents();
+  const stu = students.find(s => s.name === studentName);
+  if (!stu) return;
+  const syl = {};
+  getHistory().filter(r => (r.type === 'debrief' || r.type === 'session') && r.student === studentName).forEach(db => {
+    const sylKey = db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType);
+    if (!sylKey) return;
+    const parts = sylKey.split(':');
+    if (parts.length !== 3) return;
+    const [stageKey, type, numStr] = parts;
+    const num = parseInt(numStr);
+    if (!syl[stageKey]) syl[stageKey] = { f:{}, g:{} };
+    if (!syl[stageKey][type]) syl[stageKey][type] = {};
+    syl[stageKey][type][num] = true;
+  });
+  saveStuSyl(stu.id, syl, stu.email);
+  renderStuSyl(stu.id);
+}
+
 function syncAllDebriefSyllabus() {
   const students = getStudents();
   const byStu = {};
@@ -3409,8 +3430,12 @@ function renderHistory() {
 
 async function deleteRecord(e,id) {
   e.stopPropagation();
+  const rec = getHistory().find(r => r.id === id);
   saveHistory(getHistory().filter(r=>r.id!==id));
   renderHistory();
+  if (rec && (rec.type === 'debrief' || rec.type === 'session') && rec.student) {
+    rebuildStudentSyllabus(rec.student);
+  }
   showToast("Deleted");
   if (_sbUser) {
     const { error } = await _sb.from('student_records').delete().eq('id', String(id));
