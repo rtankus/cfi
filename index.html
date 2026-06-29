@@ -1021,11 +1021,20 @@ async function _pushStudentRecord(record) {
   );
   if (!stu) { console.warn('[push] no student matched for', name); return; }
   if (!stu.email) { console.warn('[push] student has no email:', stu.name); showToast('Add email for ' + stu.name + ' to sync'); return; }
+  let cleanRecord;
+  try {
+    const json = JSON.stringify(record, (k, v) =>
+      typeof v === 'string' ? v.replace(/[\uD800-\uDFFF\u0000]/g, '') : v
+    );
+    cleanRecord = JSON.parse(json);
+  } catch(e) {
+    console.warn('[push] unserialisable record', record.id, e); return;
+  }
   const { error } = await _sb.from('student_records').upsert({
     id: String(record.id),
     student_email: stu.email.trim().toLowerCase(),
     record_type: record.type || 'invoice',
-    data: record,
+    data: cleanRecord,
     updated_at: new Date().toISOString()
   });
   if (error) { console.error('[push] supabase error:', error); showToast('Sync error: ' + error.message); }

@@ -134,22 +134,25 @@ function buildEmail(
     const topic = data.topic ? String(data.topic) : "Lesson";
     const aircraft = data.aircraft ? String(data.aircraft) : null;
     const notes = data.notes ? String(data.notes) : null;
-    const lessonType = data.type === "ground" ? "Ground Lesson" : "Flight";
+    const isGround = data.type === "ground";
+    const lessonType = isGround ? "Ground Lesson" : "Flight";
+    const icon = isGround ? "📚" : "✈️";
 
     const detailRows = [
-      date && `<tr><td style="color:#888;padding:4px 0;width:120px">Date</td><td style="padding:4px 0">${date}</td></tr>`,
-      time && `<tr><td style="color:#888;padding:4px 0">Time</td><td style="padding:4px 0">${time}</td></tr>`,
-      `<tr><td style="color:#888;padding:4px 0">Type</td><td style="padding:4px 0">${lessonType}</td></tr>`,
-      aircraft && `<tr><td style="color:#888;padding:4px 0">Aircraft</td><td style="padding:4px 0">${aircraft}</td></tr>`,
+      date && `<tr><td style="color:#888;padding:6px 0;width:120px;font-size:14px">Date</td><td style="padding:6px 0;font-size:14px;font-weight:600">${date}</td></tr>`,
+      time && `<tr><td style="color:#888;padding:6px 0;font-size:14px">Time</td><td style="padding:6px 0;font-size:14px;font-weight:600">${time}</td></tr>`,
+      `<tr><td style="color:#888;padding:6px 0;font-size:14px">Type</td><td style="padding:6px 0;font-size:14px">${icon} ${lessonType}</td></tr>`,
+      aircraft && `<tr><td style="color:#888;padding:6px 0;font-size:14px">Aircraft</td><td style="padding:6px 0;font-size:14px">${aircraft}</td></tr>`,
     ].filter(Boolean).join("");
 
     return {
-      subject: `New lesson scheduled${date ? ` — ${date}` : ""}`,
+      subject: `${icon} ${lessonType} scheduled${date ? ` — ${date}` : ""}`,
       html: layout(`
-        <h2 style="margin:0 0 16px;font-size:18px;font-weight:600">Lesson Scheduled: ${topic}</h2>
-        <p style="margin:0 0 20px;color:#555">Your instructor has scheduled a new lesson for you.</p>
-        ${detailRows ? `<table style="border-collapse:collapse;margin-bottom:20px;font-size:14px">${detailRows}</table>` : ""}
+        <h2 style="margin:0 0 8px;font-size:18px;font-weight:600">${icon} ${topic}</h2>
+        <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6">Your flight instructor has added a new ${lessonType.toLowerCase()} to your training schedule. See the details below and log in to the student portal to view your full schedule.</p>
+        ${detailRows ? `<div style="background:#f9f9f9;border-radius:8px;padding:16px 20px;margin-bottom:20px"><table style="border-collapse:collapse;width:100%">${detailRows}</table></div>` : ""}
         ${notes ? section("Notes from your instructor", notes, "#3b82f6") : ""}
+        <p style="margin:20px 0 0;color:#888;font-size:13px;line-height:1.5">If you have any questions about this lesson, reply directly to this email or contact your instructor.</p>
       `),
     };
   }
