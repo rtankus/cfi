@@ -1028,7 +1028,8 @@ async function _pushStudentRecord(record) {
 /* ── Sync all existing history records for a student ── */
 function _safeRow(id, email, record_type, data) {
   try {
-    const clean = JSON.parse(JSON.stringify(data));
+    // Strip null bytes (U+0000) which PostgreSQL JSONB rejects
+    const clean = JSON.parse(JSON.stringify(data).replace(/ /g, ''));
     return { id, student_email: email, record_type, data: clean, updated_at: new Date().toISOString() };
   } catch(e) {
     console.warn('[sync] skipping unserialisable record', id, e);
