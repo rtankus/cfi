@@ -1819,8 +1819,13 @@ function renderSvHome(records, body) {
   const dismissed = _getSvDismissed();
   const completedSessions = Object.keys(debriefBySched)
     .filter(sid => invoiceBySched[sid] && !dismissed[sid])
-    .map(sid => ({ schedItemId: sid, debrief: debriefBySched[sid], invoice: invoiceBySched[sid] }))
-    .sort((a, b) => (b.debrief.date || '').localeCompare(a.debrief.date || ''));
+    .map(sid => ({ schedItemId: sid, debrief: debriefBySched[sid], invoice: invoiceBySched[sid] }));
+  // Also include sessions created directly (no schedule item)
+  records.filter(r => r.record_type === 'session' && r.data && !r.data.schedItemId).forEach(r => {
+    const dismissKey = 'orphan_' + r.data.id;
+    if (!dismissed[dismissKey]) completedSessions.push({ schedItemId: dismissKey, debrief: r.data, invoice: r.data });
+  });
+  completedSessions.sort((a, b) => (b.debrief.date || '').localeCompare(a.debrief.date || ''));
   window._svCompletedSessions = completedSessions;
 
   // Outstanding unpaid invoices
@@ -2306,6 +2311,20 @@ function renderCFIHome() {
       } else if (complete) {
         completedItems.push({ ...item, studentName: stu.name, sessionId: sessionBySchedId[item.id], debriefId: debriefBySchedId[item.id], invoiceId: invoiceBySchedId[item.id] });
       }
+    });
+  });
+  // Also include sessions created directly (no schedule item)
+  getHistory().filter(r => r.type === 'session' && !r.schedItemId).forEach(r => {
+    completedItems.push({
+      topic: r.lesson || r.airport || 'Session',
+      date: r.date || '',
+      time: r.time || '',
+      aircraft: r.aircraft || '',
+      studentName: r.student || r.client || '',
+      type: r.sessionType === 'gnd' ? 'ground' : 'flight',
+      sessionId: r.id,
+      debriefId: null,
+      invoiceId: null,
     });
   });
   completedItems.sort((a, b) => (b.date + (b.time||'')).localeCompare(a.date + (a.time||'')));
