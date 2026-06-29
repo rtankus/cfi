@@ -1709,6 +1709,11 @@ function svShowTab(tab) {
 function renderStudentView() {
   const records = window._svRecords || [];
   const body = document.getElementById('svBody');
+  // Keep tab button active state in sync with _svTab (e.g. after hash restore on load)
+  ['home','progress','log','payments','resources'].forEach(t => {
+    const el = document.getElementById(`svTab${t.charAt(0).toUpperCase()+t.slice(1)}`);
+    if (el) el.classList.toggle('active', t === _svTab);
+  });
   if (_svTab === 'home')      { renderSvHome(records, body); return; }
   if (_svTab === 'progress')  { renderSvProgress(records, body); return; }
   if (_svTab === 'log')       { renderSvLog(records, body); return; }
@@ -2963,7 +2968,10 @@ function saveAndGenerateSessionPDFs(share = false) {
   autoCheckSyllabus(session);
   if (isNew && session.student) {
     const stu = getStudents().find(s => s.name === session.student);
-    if (stu?.email) notifyStudent(stu.email, 'debrief', session);
+    if (stu?.email) {
+      notifyStudent(stu.email, 'debrief', session);
+      if (session.total) notifyStudent(stu.email, 'invoice', session);
+    }
   }
   if (isNew) newSession();
   showToast("Saved ✓  Generating PDFs…");
@@ -3689,10 +3697,17 @@ async function generatePDF(inv, share = false) {
 /* ══════════════════════════════════════
    TOAST
 ══════════════════════════════════════ */
+let _toastQueue=[], _toastBusy=false;
 function showToast(msg) {
+  _toastQueue.push(msg);
+  if (!_toastBusy) _drainToast();
+}
+function _drainToast() {
+  if (!_toastQueue.length) { _toastBusy=false; return; }
+  _toastBusy=true;
   const t=document.getElementById("toast");
-  t.textContent=msg; t.classList.add("show");
-  setTimeout(()=>t.classList.remove("show"),2500);
+  t.textContent=_toastQueue.shift(); t.classList.add("show");
+  setTimeout(()=>{ t.classList.remove("show"); setTimeout(_drainToast,300); },2500);
 }
 
 /* ══════════════════════════════════════
