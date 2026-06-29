@@ -204,11 +204,24 @@ function buildEmail(
   return null;
 }
 
+function fmtBody(text: string): string {
+  return text.split("\n").map(line => {
+    const t = line.trimStart();
+    let out = (t.startsWith("* ") || t.startsWith("- ")) ? "• " + t.slice(2) : line;
+    // Escape HTML
+    out = out.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Convert URLs to hyperlinks
+    out = out.replace(/(https?:\/\/[^\s<>"&]+(?:&amp;[^\s<>"]*)*)/g,
+      '<a href="$1" style="color:#3b82f6;word-break:break-all">$1</a>');
+    return out;
+  }).join("<br>");
+}
+
 function section(title: string, body: string, color: string): string {
   return `
     <div style="margin-bottom:16px;border-left:3px solid ${color};padding-left:12px">
       <div style="font-size:12px;font-weight:600;color:${color};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${title}</div>
-      <div style="font-size:14px;color:#333;line-height:1.5">${body}</div>
+      <div style="font-size:14px;color:#333;line-height:1.5">${fmtBody(body)}</div>
     </div>`;
 }
 

@@ -976,10 +976,10 @@ function renderSvDebrief(db) {
   const ratingCls = RATING_CLASS[db.rating] || '';
   const ratingBadge = db.rating ? `<span class="sv-rating ${ratingCls}">${db.rating}</span>` : '';
   const sections = [
-    db.wentWell  ? `<div><div class="sv-section-label">Went well</div><div class="sv-section-text">${esc(db.wentWell)}</div></div>` : '',
-    db.needsWork ? `<div><div class="sv-section-label">Work on</div><div class="sv-section-text">${esc(db.needsWork)}</div></div>` : '',
-    db.nextTime  ? `<div><div class="sv-section-label">Next time</div><div class="sv-section-text">${esc(db.nextTime)}</div></div>` : '',
-    db.notes     ? `<div><div class="sv-section-label">Notes</div><div class="sv-section-text">${esc(db.notes)}</div></div>` : '',
+    db.wentWell  ? `<div><div class="sv-section-label">Went well</div><div class="sv-section-text">${fmtDebriefHtml(db.wentWell)}</div></div>` : '',
+    db.needsWork ? `<div><div class="sv-section-label">Work on</div><div class="sv-section-text">${fmtDebriefHtml(db.needsWork)}</div></div>` : '',
+    db.nextTime  ? `<div><div class="sv-section-label">Next time</div><div class="sv-section-text">${fmtDebriefHtml(db.nextTime)}</div></div>` : '',
+    db.notes     ? `<div><div class="sv-section-label">Notes</div><div class="sv-section-text">${fmtDebriefHtml(db.notes)}</div></div>` : '',
   ].filter(Boolean).join('');
   const meta = [db.date, db.airport, db.aircraft, db.hours ? db.hours + ' hrs' : ''].filter(Boolean).join(' · ');
   return `<div class="sv-card">
@@ -1748,9 +1748,9 @@ function svShowDebrief(db) {
       ${db.aircraft ? `<span class="fd-pill">${esc(db.aircraft)}</span>` : ''}
       ${db.hours ? `<span class="fd-pill">${db.hours} hrs</span>` : ''}
     </div>
-    ${db.wentWell ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Went Well</div><div style="font-size:13px;color:var(--text1)">${esc(db.wentWell)}</div></div>` : ''}
-    ${db.needsWork ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Needs Work</div><div style="font-size:13px;color:var(--text1)">${esc(db.needsWork)}</div></div>` : ''}
-    ${db.nextTime ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Next Time</div><div style="font-size:13px;color:var(--text1)">${esc(db.nextTime)}</div></div>` : ''}
+    ${db.wentWell ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Went Well</div><div style="font-size:13px;color:var(--text1);white-space:pre-wrap">${fmtDebriefHtml(db.wentWell)}</div></div>` : ''}
+    ${db.needsWork ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Needs Work</div><div style="font-size:13px;color:var(--text1);white-space:pre-wrap">${fmtDebriefHtml(db.needsWork)}</div></div>` : ''}
+    ${db.nextTime ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Next Time</div><div style="font-size:13px;color:var(--text1);white-space:pre-wrap">${fmtDebriefHtml(db.nextTime)}</div></div>` : ''}
     ${db.notes ? `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Notes</div><div style="font-size:13px;color:var(--text1)">${esc(db.notes)}</div></div>` : ''}
   `;
   document.getElementById('fdOverlay').classList.add('open');
@@ -1969,7 +1969,7 @@ function closeFlightDetail() {
 function renderSvProgress(records, body) {
   const sylRec = records.find(r => r.record_type === 'syllabus');
   const syl = JSON.parse(JSON.stringify(sylRec?.data || {}));
-  records.filter(r => r.record_type === 'debrief').forEach(r => {
+  records.filter(r => r.record_type === 'debrief' || r.record_type === 'session').forEach(r => {
     const db = r.data || r;
     const sylKey = db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType);
     if (!sylKey) return;
@@ -2015,7 +2015,7 @@ function renderSvProgress(records, body) {
 }
 
 function renderSvLog(records, body) {
-  const debriefs = records.filter(r => r.record_type === 'debrief').map(r => r.data)
+  const debriefs = records.filter(r => r.record_type === 'debrief' || r.record_type === 'session').map(r => r.data)
     .sort((a,b) => (b.date||'').localeCompare(a.date||''));
   if (!debriefs.length) { body.innerHTML = '<div class="sv-empty">No flight log entries yet.</div>'; return; }
   const totals = { total:0, solo:0, xc:0, night:0, inst:0 };
@@ -2911,6 +2911,7 @@ function collectCurrentSession() {
   const tax  = parseFloat(document.getElementById("taxAmount").value) || 0;
   const date = getDateFromSel("invoiceDateSel");
   const student = document.getElementById("clientName").value;
+  const _stuObj = getStudents().find(s => s.name === student);
   return {
     id: editingDebriefId || Date.now(),
     type: "session",
@@ -2934,7 +2935,7 @@ function collectCurrentSession() {
     biz:          document.getElementById("bizName").value,
     web:          document.getElementById("bizWeb").value,
     phone:        document.getElementById("bizPhone").value,
-    client:       student,
+    client:       _stuObj?.billingName || student,
     invNum:       document.getElementById("invoiceNum").value,
     invDate:      date,
     flights:      JSON.parse(JSON.stringify(flights)),
@@ -3068,6 +3069,22 @@ function renderAttachments() {
    HISTORY
 ══════════════════════════════════════ */
 const DEBRIEF_TEXT_FIELDS = ['wentWell','needsWork','nextTime','notes'];
+
+// Render debrief text as safe HTML: * / - lines → bullets, URLs → clickable links
+function fmtDebriefHtml(text) {
+  if (!text) return '';
+  return text.split('\n').map(line => {
+    const t = line.trimStart();
+    let out = (t.startsWith('* ') || t.startsWith('- ')) ? '• ' + t.slice(2) : line;
+    // HTML-escape
+    out = out.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Convert URLs to hyperlinks (after escaping so injected HTML can't leak)
+    out = out.replace(/(https?:\/\/[^\s<>"&]+(?:&amp;[^\s<>"]*)*)/g,
+      '<a href="$1" target="_blank" rel="noopener" style="color:var(--blue);word-break:break-all;text-decoration:underline">$1</a>');
+    return out;
+  }).join('\n');
+}
+
 function cleanDebriefText(db) {
   if (!db || db.type !== 'debrief') return db;
   const out = { ...db };
@@ -3762,9 +3779,16 @@ async function generateDebriefPDF(db, mode = 'share') {
     { label:"ADDITIONAL NOTES",  color:[247,200,126], body: db.notes     },
   ];
 
+  const _urlRe = /(https?:\/\/[^\s]+)/;
   for (const sec of sections) {
     if (!sec.body || !sec.body.trim()) continue;
-    const lines = sec.body.split('\n').flatMap(l => doc.splitTextToSize(l || ' ', pageW - margin*2 - 20));
+    // Convert * / - bullet prefixes to • in PDF
+    const processedBody = sec.body.split('\n').map(l => {
+      const t = l.trimStart();
+      return (t.startsWith('* ') || t.startsWith('- ')) ? '•  ' + t.slice(2) : l;
+    }).join('\n');
+    const textWidth = pageW - margin*2 - 20;
+    const lines = processedBody.split('\n').flatMap(l => doc.splitTextToSize(l || ' ', textWidth));
     const boxH  = lines.length * 13 + 32;
     if (y + boxH > 750) { doc.addPage(); y = 44; }
 
@@ -3775,10 +3799,27 @@ async function generateDebriefPDF(db, mode = 'share') {
     doc.text(sec.label, margin+26, y+13);
     y += 20;
 
-    // Body
+    // Body — render line by line so URLs get link annotations
     doc.setFillColor(250,250,248); doc.rect(margin, y, pageW-margin*2, boxH-20, "F");
-    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(30,30,30);
-    doc.text(lines, margin+10, y+14);
+    doc.setFont("helvetica","normal"); doc.setFontSize(10);
+    let lineY = y + 14;
+    for (const line of lines) {
+      const m = line.match(_urlRe);
+      if (m) {
+        const before = line.slice(0, m.index), url = m[1], after = line.slice(m.index + url.length);
+        let cx = margin + 10;
+        if (before) { doc.setTextColor(30,30,30); doc.text(before, cx, lineY); cx += doc.getTextWidth(before); }
+        doc.setTextColor(126,184,247);
+        doc.textWithLink(url, cx, lineY, { url });
+        cx += doc.getTextWidth(url);
+        if (after) { doc.setTextColor(30,30,30); doc.text(after, cx, lineY); }
+        doc.setTextColor(30,30,30);
+      } else {
+        doc.setTextColor(30,30,30);
+        doc.text(line || ' ', margin+10, lineY);
+      }
+      lineY += 13;
+    }
     y += boxH - 20 + 10;
   }
 
