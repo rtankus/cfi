@@ -1519,6 +1519,10 @@ function removeCheckItem(sid, itemId) {
 function renderStuSyl(sid) {
   syncAllDebriefSyllabus();
   const syl = getStuSyl(sid);
+  const _dbg = getHistory().filter(r => r.type === 'debrief' || r.type === 'session')
+    .map(db => `[${db.type}] student="${db.student}" lesson="${db.lesson}" sylKey="${db.sylKey}" → ${db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType) || 'NO MATCH'}`);
+  console.log('[renderStuSyl] history sessions:', _dbg);
+  console.log('[renderStuSyl] syl for sid', sid, ':', JSON.stringify(getStuSyl(sid)));
   const el = document.getElementById(`stu-syl-list-${sid}`);
   el.innerHTML = PPL_SYLLABUS.map(stage => {
     const st = syl[stage.key] || { f:{}, g:{} };
@@ -1978,9 +1982,11 @@ function closeFlightDetail() {
 function renderSvProgress(records, body) {
   const sylRec = records.find(r => r.record_type === 'syllabus');
   const syl = JSON.parse(JSON.stringify(sylRec?.data || {}));
+  const _dbgLines = [];
   records.filter(r => r.record_type === 'debrief' || r.record_type === 'session').forEach(r => {
     const db = r.data || r;
     const sylKey = db.sylKey || _lessonTextToSylKey(db.lesson, db.sessionType);
+    _dbgLines.push(`[${r.record_type}] lesson="${db.lesson}" sylKey="${db.sylKey}" → resolved="${sylKey}"`);
     if (!sylKey) return;
     const parts = sylKey.split(':');
     if (parts.length !== 3) return;
@@ -1990,7 +1996,10 @@ function renderSvProgress(records, body) {
     if (!syl[stageKey][type]) syl[stageKey][type] = {};
     if (syl[stageKey][type][num] !== false) syl[stageKey][type][num] = true;
   });
-  body.innerHTML = PPL_SYLLABUS.map(stage => {
+  const _dbgHtml = _dbgLines.length
+    ? `<div style="background:#1a1a2e;border:1px solid #444;border-radius:6px;padding:10px;margin-bottom:12px;font-size:10px;font-family:monospace;color:#aaa;white-space:pre-wrap">${_dbgLines.join('\n')}</div>`
+    : `<div style="background:#1a1a2e;border:1px solid #f44;border-radius:6px;padding:10px;margin-bottom:12px;font-size:10px;font-family:monospace;color:#f88">No session/debrief records found in ${records.length} total records.\nRecord types: ${[...new Set(records.map(r=>r.record_type))].join(', ')}</div>`;
+  body.innerHTML = _dbgHtml + PPL_SYLLABUS.map(stage => {
     const st = syl[stage.key] || { f:{}, g:{} };
     const total = stage.flights.length + stage.grounds.length;
     const done  = stage.flights.filter(l => st.f && st.f[l.n]).length + stage.grounds.filter(l => st.g && st.g[l.n]).length;
