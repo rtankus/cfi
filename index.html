@@ -927,6 +927,9 @@ async function loadStudentView(email) {
     const t = svHash.slice(3);
     if (svValidTabs.has(t)) _svTab = t;
   }
+  const nameEl = document.getElementById('svStudentName');
+  if (nameEl) nameEl.textContent = email;
+
   await refreshStudentView(true);
 
   // Live updates: refresh whenever CFI writes to this student's records
@@ -939,6 +942,9 @@ async function loadStudentView(email) {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && window._svEmail) refreshStudentView(false);
   });
+
+  // Polling fallback in case realtime doesn't fire (e.g. no REPLICA IDENTITY FULL)
+  setInterval(() => { if (window._svEmail) refreshStudentView(false); }, 30000);
 }
 
 async function refreshStudentView(showLoading) {
@@ -1336,7 +1342,7 @@ function addScheduleItem(sid) {
   _cache[`stu_sched_${sid}`] = JSON.stringify(data);
   renderStuSched(sid);
 }
-function confirmSchedItem(sid, itemId) {
+async function confirmSchedItem(sid, itemId) {
   const data = getStuSched(sid);
   const item = data.items.find(i => i.id === itemId);
   if (!item) return;
@@ -1344,7 +1350,7 @@ function confirmSchedItem(sid, itemId) {
   _cache[`stu_sched_${sid}`] = JSON.stringify(data);
   renderStuSched(sid);
   const email = getStuEmail(sid);
-  saveStuSched(sid, data, email);
+  await saveStuSched(sid, data, email);
   if (email) notifyStudent(email, 'schedule', item);
 }
 const _schedEditMode = new Set();
