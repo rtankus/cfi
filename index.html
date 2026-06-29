@@ -1046,7 +1046,7 @@ async function _upsertInBatches(rows) {
       // retry one-by-one to find the bad record
       for (const row of batch) {
         const { error: e2 } = await _sb.from('student_records').upsert([row]);
-        if (e2) { console.warn('[sync] skipping bad record', row.id, e2.message); skipped++; }
+        if (e2) { console.warn('[sync] skipping bad record', row.id, e2.message, '\nDATA:', JSON.stringify(row.data)); skipped++; }
       }
     }
   }
