@@ -1289,8 +1289,8 @@ function renderStuSched(sid) {
           <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
         </div>
         ${buildSchedTopicHtml(sid, item.id, item)}
-        <textarea class="sched-notes" placeholder="Instructions / notes for student…" oninput="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
-        <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" oninput="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
+        <textarea id="sched-notes-${sid}-${item.id}" class="sched-notes" placeholder="Instructions / notes for student…" oninput="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
+        <textarea id="sched-prep-${sid}-${item.id}" class="sched-notes" placeholder="Prep tasks (one per line)…" oninput="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
       </div>`;
     }
     const editing = _schedEditMode.has(`${sid}_${item.id}`);
@@ -1315,8 +1315,8 @@ function renderStuSched(sid) {
           <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
         </div>
         ${buildSchedTopicHtml(sid, item.id, item)}
-        <textarea class="sched-notes" placeholder="Instructions / notes for student…" oninput="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
-        <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" oninput="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
+        <textarea id="sched-notes-${sid}-${item.id}" class="sched-notes" placeholder="Instructions / notes for student…" oninput="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
+        <textarea id="sched-prep-${sid}-${item.id}" class="sched-notes" placeholder="Prep tasks (one per line)…" oninput="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
       </div>`;
     }
     // Locked (read-only) view
@@ -1352,6 +1352,10 @@ function addScheduleItem(sid) {
   renderStuSched(sid);
 }
 async function confirmSchedItem(sid, itemId) {
+  const notesEl = document.getElementById(`sched-notes-${sid}-${itemId}`);
+  if (notesEl) updateSchedItem(sid, itemId, 'notes', notesEl.value);
+  const prepEl = document.getElementById(`sched-prep-${sid}-${itemId}`);
+  if (prepEl) updateSchedItem(sid, itemId, 'prepTasks', prepEl.value.split('\n').map(t => t.trim()).filter(Boolean));
   const data = getStuSched(sid);
   const item = data.items.find(i => i.id === itemId);
   if (!item) return;
@@ -1374,6 +1378,10 @@ function editSchedItem(sid, itemId) {
   renderStuSched(sid);
 }
 function saveSchedItemEdit(sid, itemId) {
+  const notesEl = document.getElementById(`sched-notes-${sid}-${itemId}`);
+  if (notesEl) updateSchedItem(sid, itemId, 'notes', notesEl.value);
+  const prepEl = document.getElementById(`sched-prep-${sid}-${itemId}`);
+  if (prepEl) updateSchedItem(sid, itemId, 'prepTasks', prepEl.value.split('\n').map(t => t.trim()).filter(Boolean));
   const key = `${sid}_${itemId}`;
   _schedEditMode.delete(key);
   _schedEditOriginals.delete(key);
