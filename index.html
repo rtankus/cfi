@@ -1238,7 +1238,7 @@ async function _pullAndRenderStuCheck(sid) {
 function renderStuSched(sid) {
   const data = getStuSched(sid);
   const el = document.getElementById(`stu-sched-list-${sid}`);
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayStr();
   const debriefBySched = {}, invoiceBySched = {};
   getHistory().forEach(r => {
     if (r.schedItemId) {
@@ -1328,7 +1328,7 @@ function renderStuSched(sid) {
 }
 function addScheduleItem(sid) {
   const _now = new Date();
-  const _nowDate = _now.toISOString().slice(0,10);
+  const _nowDate = todayStr();
   const _nowTime = _now.toTimeString().slice(0,5);
   const newItem = { id: String(Date.now()), date:_nowDate, time:_nowTime, type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled', pending: true };
   const data = getStuSched(sid);
@@ -1770,7 +1770,7 @@ function svShowInvoice(inv) {
 function renderSvHome(records, body) {
   const schedRec  = records.find(r => r.record_type === 'schedule');
   const checkRec  = records.find(r => r.record_type === 'checklist');
-  const today     = new Date().toISOString().slice(0,10);
+  const today     = todayStr();
 
   // Build debrief/invoice maps first so upcoming can exclude completed sessions
   const debriefBySched = {}, invoiceBySched = {};
@@ -2266,7 +2266,7 @@ function renderCFIHome() {
   if (!body) return;
   syncAllDebriefSyllabus();
   const students = getStudents();
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayStr();
 
   const debriefBySchedId = {}, invoiceBySchedId = {}, sessionBySchedId = {};
   getHistory().forEach(r => {
@@ -2446,7 +2446,7 @@ async function saveAddLesson() {
   closeAddLesson();
   renderCFIHome();
   showToast('Lesson added ✓');
-  notifyStudent(stu.email, 'schedule', newItem);
+  await notifyStudent(stu.email, 'schedule', newItem);
 }
 
 function openSchedDebrief(recordId) {
