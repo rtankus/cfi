@@ -412,7 +412,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .sv-next-notes { font-size: 13px; color: var(--text2); margin-top: 6px; font-style: italic; }
 .sv-check-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 0.5px solid var(--border); }
 .sv-check-item:last-child { border-bottom: none; }
-.sv-check-item label { font-size: 14px; cursor: pointer; flex: 1; }
+.sv-check-item label { font-size: 14px; cursor: pointer; flex: 1; word-break: break-word; overflow-wrap: break-word; }
 .sv-check-item.done label { text-decoration: line-through; color: var(--text3); }
 .sv-check-item input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
 .sv-log-row { display: grid; grid-template-columns: 1fr repeat(5,auto); gap: 6px; padding: 10px 14px; border-bottom: 0.5px solid var(--border); align-items: center; font-size: 13px; }
@@ -1009,6 +1009,13 @@ function renderSvInvoice(inv) {
 }
 
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function linkify(s) {
+  return String(s||'').split(/(https?:\/\/[^\s]+)/).map(part =>
+    /^https?:\/\//.test(part)
+      ? `<a href="${esc(part)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue);word-break:break-all;text-decoration:underline">${esc(part)}</a>`
+      : esc(part)
+  ).join('');
+}
 
 /* ── Push a single record to student_records ── */
 async function _pushStudentRecord(record) {
@@ -1877,7 +1884,7 @@ function renderSvHome(records, body) {
     const done = item.done || false;
     return `<div class="sv-check-item ${done?'done':''}" id="svci-${item.id}">
       <input type="checkbox" ${done?'checked':''} onchange="svToggleCheck('${item.id}',this.checked)">
-      <label onclick="svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${esc(item.text)}</label>
+      <label onclick="svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${linkify(item.text)}</label>
     </div>`;
   }).join('');
 
@@ -1902,7 +1909,7 @@ function renderSvHome(records, body) {
       <div class="sv-next-meta">${nextFlight.date ? fmtDateStr(nextFlight.date) : ''}${nextFlight.time ? ' · ' + fmt12(nextFlight.time) : ''}${nextFlight.aircraft ? ' · ' + esc(nextFlight.aircraft) : ''}</div>
       ${nextFlight.notes ? `<div class="sv-next-notes">${esc(nextFlight.notes)}</div>` : ''}
       <button onclick="event.stopPropagation();exportToCalendar(window._svUpcoming[0])" style="margin-top:10px;background:rgba(126,184,247,0.2);border:0.5px solid rgba(126,184,247,0.4);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--blue);font-family:inherit;cursor:pointer">+ Add to Calendar</button>
-      ${(prepTasks.length || flightChecklistTasks.length) ? `<div style="margin-top:14px;border-top:0.5px solid rgba(126,184,247,0.2);padding-top:12px"><div style="font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Prep for this lesson</div>${prepTasks.map((task, idx) => { const key = nextFlight.id+'_p'+idx; const done = !!_svDoneMap[key]; return `<div class="sv-check-item ${done?'done':''}" id="svpi-${key}" onclick="event.stopPropagation()"><input type="checkbox" ${done?'checked':''} onchange="svTogglePrepTask('${nextFlight.id}',${idx},this.checked)"><label onclick="event.stopPropagation();svTogglePrepTask('${nextFlight.id}',${idx},!document.querySelector('#svpi-${key} input').checked)">${esc(task)}</label></div>`; }).join('')}${flightChecklistTasks.map(item => { const done = item.done || false; return `<div class="sv-check-item ${done?'done':''}" id="svci-${item.id}" onclick="event.stopPropagation()"><input type="checkbox" ${done?'checked':''} onchange="svToggleCheck('${item.id}',this.checked)"><label onclick="event.stopPropagation();svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${esc(item.text)}</label></div>`; }).join('')}</div>` : ''}
+      ${(prepTasks.length || flightChecklistTasks.length) ? `<div style="margin-top:14px;border-top:0.5px solid rgba(126,184,247,0.2);padding-top:12px"><div style="font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Prep for this lesson</div>${prepTasks.map((task, idx) => { const key = nextFlight.id+'_p'+idx; const done = !!_svDoneMap[key]; return `<div class="sv-check-item ${done?'done':''}" id="svpi-${key}" onclick="event.stopPropagation()"><input type="checkbox" ${done?'checked':''} onchange="svTogglePrepTask('${nextFlight.id}',${idx},this.checked)"><label onclick="event.stopPropagation();svTogglePrepTask('${nextFlight.id}',${idx},!document.querySelector('#svpi-${key} input').checked)">${linkify(task)}</label></div>`; }).join('')}${flightChecklistTasks.map(item => { const done = item.done || false; return `<div class="sv-check-item ${done?'done':''}" id="svci-${item.id}" onclick="event.stopPropagation()"><input type="checkbox" ${done?'checked':''} onchange="svToggleCheck('${item.id}',this.checked)"><label onclick="event.stopPropagation();svToggleCheck('${item.id}',!document.querySelector('#svci-${item.id} input').checked)">${linkify(item.text)}</label></div>`; }).join('')}</div>` : ''}
     </div>` : '';
 
   const checkHtml = generalTasks.length ? `
