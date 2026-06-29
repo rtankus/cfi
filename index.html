@@ -3879,14 +3879,14 @@ function renderStudents() {
   }
   const history = getHistory();
   el.innerHTML = students.map(s => {
-    const studentDebriefs = history.filter(r => r.type === "debrief" && r.student === s.name);
+    const studentDebriefs = history.filter(r => (r.type === "debrief" || r.type === "session") && (r.student === s.name || r.client === s.name));
     const debriefCount = studentDebriefs.length;
     const fltCount = studentDebriefs.filter(r => r.sessionType === "flt").length;
     const gndCount = studentDebriefs.filter(r => r.sessionType === "gnd").length;
     const untagged = debriefCount - fltCount - gndCount;
     const sessionLabel = (fltCount || gndCount)
       ? `${fltCount} flt · ${gndCount} gnd${untagged ? " · "+untagged+" untagged" : ""}`
-      : `${debriefCount} debrief${debriefCount!==1?"s":""}`;
+      : `${debriefCount} session${debriefCount!==1?"s":""}`;
 
     const goalOpts = GOALS.map(g => `<option value="${g}" ${s.goal===g?"selected":""}>${g}</option>`).join("");
     const medOpts  = MEDICALS.map(m => `<option value="${m}" ${s.medical===m?"selected":""}>${m}</option>`).join("");
