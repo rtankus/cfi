@@ -1273,7 +1273,7 @@ function renderStuSched(sid) {
           <button class="sched-confirm-btn" onclick="confirmSchedItem(${sid},'${item.id}')">✓ Save</button>
           <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
         </div>
-        <input class="sched-field" placeholder="Topic / lesson name" value="${esc(item.topic||'')}" onchange="updateSchedItem(${sid},'${item.id}','topic',this.value)" style="width:100%">
+        ${buildSchedTopicHtml(sid, item.id, item)}
         <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
         <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" onchange="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
       </div>`;
@@ -1299,7 +1299,7 @@ function renderStuSched(sid) {
           <button class="remove-btn" style="font-size:14px;color:var(--text2)" onclick="cancelSchedItemEdit(${sid},'${item.id}')">✕</button>
           <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
         </div>
-        <input class="sched-field" placeholder="Topic / lesson name" value="${esc(item.topic||'')}" onchange="updateSchedItem(${sid},'${item.id}','topic',this.value)" style="width:100%">
+        ${buildSchedTopicHtml(sid, item.id, item)}
         <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
         <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" onchange="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
       </div>`;
@@ -1377,6 +1377,51 @@ function cancelSchedItemEdit(sid, itemId) {
   _schedEditOriginals.delete(key);
   renderStuSched(sid);
 }
+function buildSchedTopicHtml(sid, itemId, item) {
+  let opts = '<option value="">— select lesson —</option>';
+  PPL_SYLLABUS.forEach(stage => {
+    opts += `<optgroup label="${esc(stage.name)}">`;
+    stage.flights.forEach(l => {
+      const val = `${stage.key}:f:${l.n}`;
+      opts += `<option value="${val}" ${item.sylKey === val ? 'selected' : ''}>✈ Flight ${l.n}: ${l.t}</option>`;
+    });
+    stage.grounds.forEach(l => {
+      const val = `${stage.key}:g:${l.n}`;
+      opts += `<option value="${val}" ${item.sylKey === val ? 'selected' : ''}>📖 Ground ${l.n}: ${l.t}</option>`;
+    });
+    opts += '</optgroup>';
+  });
+  const isCustom = !!(item.topic && !item.sylKey);
+  opts += `<option value="custom" ${isCustom ? 'selected' : ''}>Custom…</option>`;
+  return `
+    <select class="sched-field" style="width:100%;margin-top:4px" id="sched-topic-sel-${sid}-${itemId}" onchange="onSchedTopicChange(${sid},'${itemId}',this)">${opts}</select>
+    <input class="sched-field" placeholder="Custom lesson name…" id="sched-topic-custom-${sid}-${itemId}" style="width:100%;margin-top:4px;${isCustom ? '' : 'display:none'}" value="${esc(item.topic||'')}" oninput="updateSchedItem(${sid},'${itemId}','topic',this.value)">`;
+}
+
+function onSchedTopicChange(sid, itemId, sel) {
+  const val = sel.value;
+  const customInput = document.getElementById(`sched-topic-custom-${sid}-${itemId}`);
+  if (val === 'custom') {
+    customInput.style.display = '';
+    updateSchedItem(sid, itemId, 'topic', customInput.value);
+    updateSchedItem(sid, itemId, 'sylKey', '');
+  } else if (val) {
+    customInput.style.display = 'none';
+    const opt = sel.options[sel.selectedIndex];
+    const text = opt ? opt.text.replace(/^[✈📖]\s*/, '') : '';
+    updateSchedItem(sid, itemId, 'topic', text);
+    updateSchedItem(sid, itemId, 'sylKey', val);
+    const type = val.split(':')[1] === 'g' ? 'ground' : 'flight';
+    updateSchedItem(sid, itemId, 'type', type);
+    const typeSel = sel.closest('.sched-item').querySelector('.sched-select');
+    if (typeSel) { typeSel.value = type; typeSel.style.color = type === 'ground' ? 'var(--amber)' : 'var(--blue)'; }
+  } else {
+    customInput.style.display = 'none';
+    updateSchedItem(sid, itemId, 'topic', '');
+    updateSchedItem(sid, itemId, 'sylKey', '');
+  }
+}
+
 function updateSchedItem(sid, itemId, field, val) {
   const data = getStuSched(sid);
   const item = data.items.find(i => i.id === itemId);
