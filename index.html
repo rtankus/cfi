@@ -1327,7 +1327,10 @@ function renderStuSched(sid) {
   }).join('');
 }
 function addScheduleItem(sid) {
-  const newItem = { id: String(Date.now()), date:'', time:'', type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled', pending: true };
+  const _now = new Date();
+  const _nowDate = _now.toISOString().slice(0,10);
+  const _nowTime = _now.toTimeString().slice(0,5);
+  const newItem = { id: String(Date.now()), date:_nowDate, time:_nowTime, type:'flight', aircraft:'', topic:'', notes:'', status:'scheduled', pending: true };
   const data = getStuSched(sid);
   data.items.push(newItem);
   _cache[`stu_sched_${sid}`] = JSON.stringify(data);
@@ -2404,7 +2407,7 @@ function openAddLesson(prefillStudentName) {
     if (match) sel.value = match.id;
   }
   document.getElementById('alDate').value = todayStr();
-  document.getElementById('alTime').value = '';
+  document.getElementById('alTime').value = new Date().toTimeString().slice(0,5);
   document.getElementById('alType').value = 'flight';
   document.getElementById('alAircraft').value = '';
   document.getElementById('alTopic').value = '';
