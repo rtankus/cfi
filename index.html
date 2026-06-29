@@ -1289,8 +1289,8 @@ function renderStuSched(sid) {
           <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
         </div>
         ${buildSchedTopicHtml(sid, item.id, item)}
-        <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
-        <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" onchange="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
+        <textarea class="sched-notes" placeholder="Instructions / notes for student…" oninput="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
+        <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" oninput="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
       </div>`;
     }
     const editing = _schedEditMode.has(`${sid}_${item.id}`);
@@ -1315,8 +1315,8 @@ function renderStuSched(sid) {
           <button class="remove-btn" onclick="removeSchedItem(${sid},'${item.id}')">×</button>
         </div>
         ${buildSchedTopicHtml(sid, item.id, item)}
-        <textarea class="sched-notes" placeholder="Instructions / notes for student…" onchange="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
-        <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" onchange="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
+        <textarea class="sched-notes" placeholder="Instructions / notes for student…" oninput="updateSchedItem(${sid},'${item.id}','notes',this.value)">${esc(item.notes||'')}</textarea>
+        <textarea class="sched-notes" placeholder="Prep tasks (one per line)…" oninput="updateSchedItem(${sid},'${item.id}','prepTasks',this.value.split('\n').map(t=>t.trim()).filter(Boolean))">${(item.prepTasks||[]).join('\n')}</textarea>
       </div>`;
     }
     // Locked (read-only) view
