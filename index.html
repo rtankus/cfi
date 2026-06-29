@@ -3254,12 +3254,15 @@ function renderHistory() {
   }).join("");
 }
 
-function deleteRecord(e,id) {
+async function deleteRecord(e,id) {
   e.stopPropagation();
   saveHistory(getHistory().filter(r=>r.id!==id));
   renderHistory();
   showToast("Deleted");
-  if (_sbUser) _sb.from('student_records').delete().eq('id', String(id));
+  if (_sbUser) {
+    const { error } = await _sb.from('student_records').delete().eq('id', String(id));
+    if (error) { console.error('[deleteRecord]', error); showToast('Cloud delete failed: ' + error.message); }
+  }
 }
 
 /* ══════════════════════════════════════
