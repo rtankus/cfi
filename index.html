@@ -3069,12 +3069,13 @@ function saveAndGenerateSessionPDFs(share = false) {
       if (session.total) notifyStudent(stu.email, 'invoice', session);
     }
   }
+  const capturedAttachments = [...attachments];
   if (isNew) newSession();
   showToast("Saved ✓  Generating PDFs…");
   const mode = share ? 'share' : 'download';
   setTimeout(async () => {
     generateDebriefPDF(session, mode);
-    setTimeout(() => generatePDF({ ...session, notes: session.invoiceNotes || "" }, share), 700);
+    setTimeout(() => generatePDF({ ...session, notes: session.invoiceNotes || "", attachments: capturedAttachments }, share), 700);
   }, 300);
 }
 
@@ -3735,7 +3736,7 @@ async function generatePDF(inv, share = false) {
   doc.setFont("helvetica","italic"); doc.setFontSize(10); doc.setTextColor(140,140,140);
   doc.text(`Thank you for flying with Raina!   •   ${web}`,pageW/2,pageH-24,{align:"center"});
 
-  const attSource = attachments.length ? attachments : (inv.attachmentNames||[]).map(n=>({name:n,_missing:true}));
+  const attSource = (inv.attachments && inv.attachments.length) ? inv.attachments : attachments.length ? attachments : (inv.attachmentNames||[]).map(n=>({name:n,_missing:true}));
   let attachIdx=0;
   for (const att of attSource) {
     attachIdx++;
